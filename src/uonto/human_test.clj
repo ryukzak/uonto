@@ -15,7 +15,7 @@
      D
      E
   "
-  (misc/experiment
+  (raw/with-onto
    (let [clss [:A :B :C :D :E]
          objs [:a :b :c :d :e]]
 
@@ -29,11 +29,11 @@
      (h/def-object! :E {:core/is-subclass [:D]})
 
      (is (= #{[:E :A] [:E :B] [:E :C] [:D :A]}
-            (->> (raw/infer-transitive-subclasses!) raw/repr)))
+            (->> (raw/infer-transitive-subclasses!) raw/repr*)))
      (is (empty? (raw/infer-transitive-subclasses!)))
 
      (is (= #{[:b :A] [:c :A] [:d :A] [:d :B] [:d :C] [:e :A] [:e :B] [:e :C] [:e :D]}
-            (->> (raw/infer-subclasses-instances!) raw/repr)))
+            (->> (raw/infer-subclasses-instances!) raw/repr*)))
      (is (empty? (raw/infer-subclasses-instances!)))
 
      (is (= #{:A} (h/classes :a)))
@@ -52,10 +52,12 @@
             (-> (h/classes :a) h/repr-verbose))))))
 
 (deftest multilanguage-example-test []
-  (misc/experiment
+  (raw/with-onto {}
    (testing "Root classes"
      (h/def-object! :code-system    {:core/is-instance [:core/class]})
      (h/def-object! :code-system-id {:core/is-instance [:core/class]})
+
+     (prn :classes :code-system 1 (h/classes :code-system))
 
      (h/def-object! :code-value   {:core/is-instance [:core/class]})
      (h/def-object! :display      {:core/is-instance [:core/class]})
@@ -97,6 +99,10 @@
      (h/def-object! "Disorder of glucose metabolism (disorder)"
        {:core/is-instance [:c/id-1.1 :display
                            :designation :languages/en]}))
+
+   ;; (clojure.pprint/pprint @raw/*onto-state)
+   ;; (h/def-object! :code-system    {:core/is-instance [:core/class]})
+
 
    (defn validate-code [{:keys [system code]}]
      (let [[code-system & ambiguous]

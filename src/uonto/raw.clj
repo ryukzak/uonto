@@ -1,59 +1,96 @@
 (ns uonto.raw
   "API for work with ids & mapping id<->object"
   (:require
-   [clojure.spec.alpha :as s]))
+   [clojure.spec.alpha :as s]
+   [uonto.raw :as raw]))
+
+;; NOTE: Currently we preffer minimalistic state istead of performance. For real
+;; application -- we can add a lot of indexes.
 
 (s/check-asserts true)
 
-;; NOTE: Currently we preffer minimalistic state istead of performance.
+;; interface specs
 
-(def *objects "<key id> -> [<class id>]" (atom {}))
+(s/def ::object-id int?)
+(s/def ::object-id-set (s/coll-of ::object-id :kind set?))
 
-(def *object->id "<object-representation> -> <id>" (atom {}))
+(s/def ::object (s/or :string  string?
+                      :keyword keyword?
+                      :tuple   ::tuple))
 
-;; Mapping
+(s/def ::tuple  (s/and vector? (s/coll-of ::object-id)))
 
-(defn object->id! "If object is not known then ad it with new id."
-  [o]
-  (let [id (get @*object->id o)]
+;; onto-state specs
+
+(s/def ::onto-state (s/keys :req-un [:onto-state/objects
+                                     :onto-state/object->id]))
+
+(s/def :onto-state/objects    (s/every (s/tuple ::object-id ::object-id-set) :into {}))
+(s/def :onto-state/object->id (s/every (s/tuple ::object    ::object-id)     :into {}))
+
+;; state
+
+#_(def ^:dynamic *onto-state
+  (atom {:objects {}
+         :object->id {}}
+        :validator #(s/valid? ::onto-state %)))
+
+(def ^:dynamic *onto-state
+  (atom {:objects {}
+         :object->id {}}
+        :validator #(s/valid? ::onto-state %)))
+
+(defmacro with-onto
+  "Experiment with ontology model and clean result on the exit."
+  [m & body]
+  `(binding [*onto-state (atom @*onto-state)]
+      ~@body))
+
+(defn object->id [obj]
+  (let [id (get-in @*onto-state [:object->id obj])]
     (cond
       (some? id) id
 
-      (and (vector? o)
-           (every? (comp not number?) o))
-      (object->id! (mapv object->id! o))
+      (and (vector? obj)
+           (every? #(not (number? %)) obj))
+      (do (s/assert ::tuple obj)
+          (object->id (mapv object->id obj)))
 
       :else
-      (do (swap! *object->id (fn [m] (assoc m o (count m))))
-          (let [id' (object->id! o)]
-            (swap! *objects assoc id' #{})
-            id')))))
+      (do (swap! *onto-state (fn [onto-state]
+                               (let [id (count (:object->id onto-state))]
+                                 (-> onto-state
+                                     (assoc-in [:object->id obj] id)
+                                     (assoc-in [:objects id] #{})))))
+          (object->id obj)))))
 
 (defn id->object [id]
-  (if (< id (count @*object->id))
-    (->> @*object->id
+  (if (< id (count (:objects @*onto-state)))
+    (->> (:object->id @*onto-state)
          (filter (fn [[_ i]] (= i id)))
          first first)
-    (throw (ex-info "Id not found" {:id id}))))
+    (throw (ex-info "object id is not found" {:id id}))))
 
 (defn classes
   "get list of the object class"
   [id]
-  (s/assert int? id)
-  (get @*objects id))
+  (s/assert ::object-id id)
+  (get-in @*onto-state [:objects id]))
 
 ;; Representation
 
 (defn repr-object [id]
   (let [object (id->object id)]
-    (if (or (vector? object) (list? object))
+    (if (or (vector? object)
+            ;; FIXME: remove list? check
+            (list? object))
       (mapv repr-object object)
       object)))
 
 (defn repr
   "represent knowlage about objects"
   [object-ids]
-  (s/assert (s/coll-of int?) object-ids)
+  (s/assert (s/coll-of ::object-id) object-ids)
   (->> object-ids
        (map repr-object)
        (into #{})))
@@ -61,7 +98,7 @@
 (defn repr-verbose
   "represent knowlage about objects"
   [object-ids]
-  (s/assert (s/coll-of int?) object-ids)
+  (s/assert (s/coll-of ::object-id) object-ids)
   (->> object-ids
        (map (fn [id]
               [(repr-object id)
@@ -80,22 +117,22 @@
    (s/assert int? object-id)
    (contains? (classes object-id) class-id)))
 
-(defn is-first?
-  ([object-id] (partial is-first? object-id))
-  ([object-id tuple-id] (= object-id (first (id->object tuple-id)))))
+;; (defn is-first?
+;;   ([object-id] (partial is-first? object-id))
+;;   ([object-id tuple-id] (= object-id (first (id->object* tuple-id)))))
 
-(defn is-second?
-  ([object-id] (partial is-second? object-id))
-  ([object-id tuple-id] (= object-id (second (id->object tuple-id)))))
+;; (defn is-second?
+;;   ([object-id] (partial is-second? object-id))
+;;   ([object-id tuple-id] (= object-id (second (id->object* tuple-id)))))
 
-(defn object-satisfies?
-  ([pred] (partial object-satisfies? pred))
-  ([pred object-id] (pred (id->object object-id))))
+;; (defn object-satisfies?
+;;   ([pred] (partial object-satisfies? pred))
+;;   ([pred object-id] (pred (id->object* object-id))))
 
-;; Object selectors
+;; ;; Object selectors
 
 (defn all-objects []
-  (keys @*objects))
+  (keys (:objects @*onto-state)))
 
 (defn objects []
   (->> (all-objects)
@@ -105,9 +142,12 @@
   (->> (all-objects)
        (filter #(vector? (id->object %)))))
 
-(defn instances [class-id] (->> (all-objects)
-                                (filter #(contains? (classes %) class-id))
-                                (into [])))
+(defn instances [class-id]
+  (s/assert ::object-id class-id)
+  (prn class-id)
+  (->> (all-objects)
+       (filter #(contains? (classes %) class-id))
+       (into [])))
 
 (defn- is-single-core? [id]
   (let [obj (id->object id)]
@@ -123,51 +163,53 @@
 (defn no-core
   "remove all :core/* objects and tuples with :core/* objects."
   [obj-ids]
-  (s/assert (s/coll-of int?) obj-ids)
+  (s/assert (s/coll-of ::object-id) obj-ids)
   (->> obj-ids
        (remove is-core?)))
 
-(defn remove-tuple [obj-ids]
-  (s/assert (s/coll-of int?) obj-ids)
-  (->> obj-ids
-       (remove (fn [id] (vector? (id->object id))))))
+;; (defn remove-tuple [obj-ids]
+;;   (s/assert (s/coll-of int?) obj-ids)
+;;   (->> obj-ids
+;;        (remove (fn [id] (vector? (id->object* id))))))
 
-;; NOTE: Maybe better to it by classes instead of object introspections.
+;; ;; NOTE: Maybe better to it by classes instead of object introspections.
 
 ;; Basic classes
 
-(def core:class       (object->id! :core/class))
+(def core:class       (object->id :core/class))
+(def core:is-instance (object->id :core/is-instance))
+(def core:is-subclass (object->id :core/is-subclass))
 
-(s/def ::is-class (fn [id]
-                    (prn ::is-class id (classes id))
-                    (contains? (classes id) core:class)))
 
-(def core:is-instance (object->id! :core/is-instance))
+
+
+(s/def ::is-class #(contains? (classes %) core:class))
+
+
 
 (defn def-object! [object-id relations]
-  (s/assert int? object-id)
-  (s/assert (s/map-of int? (s/coll-of int?)) relations)
+  (s/assert ::object-id object-id)
+  (s/assert (s/map-of ::object-id (s/coll-of ::object-id)) relations)
   (let [is-instance-of (get relations core:is-instance)]
     (->> is-instance-of
          (map (fn [class-id]
-                (swap! *objects
-                       (fn [objects]
-                         (update objects object-id conj class-id)))))
+                (swap! *onto-state
+                       (fn [onto-state]
+                         (update-in onto-state [:objects object-id] conj class-id)))))
          doall)
     (->> relations
          (map (fn [[rel-class-id obj-ids]]
                 (->> obj-ids
                      (map (fn [second-obj-id]
-                            (let [rel-object (vector object-id second-obj-id)
-                                  rel-object-id (object->id! rel-object)]
-                              (swap! *objects
-                                     update rel-object-id
+                            (let [rel-object [object-id second-obj-id]
+                                  rel-object-id (object->id rel-object)]
+                              (swap! *onto-state
+                                     update-in [:objects rel-object-id]
                                      conj rel-class-id))))
                      doall)))
          doall)
     object-id))
 
-(def core:is-subclass (object->id! :core/is-subclass))
 
 (def-object! core:class {core:is-instance [core:class]})
 (def-object! core:is-instance {core:is-instance [core:class]})
@@ -192,7 +234,7 @@
                                     :when (not (contains? is-subclasses-tuples [down hop]))]
                                 [down hop])
         infer-subclasses-relations (->> infer-subclass-tuples
-                                        (map object->id!)
+                                        (map object->id)
                                         (into #{}))]
 
     (->> infer-subclass-tuples
@@ -214,7 +256,7 @@
     (->> instances
          (map (fn [[object top]]
                 (def-object! object {core:is-instance [top]})
-                (object->id! [object top])))
+                (object->id [object top])))
          (into #{})
          (into [])
          doall)))

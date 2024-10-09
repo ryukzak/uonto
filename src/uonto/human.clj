@@ -6,12 +6,12 @@
 (s/check-asserts true)
 
 (defn def-object! [object relations]
-  (let [id (raw/object->id! object)
+  (let [id (raw/object->id object)
         relations' (->> relations
                         (map (fn [[relation-class related-objs]]
-                               (let [relation-class-id  (raw/object->id! relation-class)
+                               (let [relation-class-id  (raw/object->id relation-class)
                                      related-object-ids (->> related-objs
-                                                             (map raw/object->id!)
+                                                             (map raw/object->id)
                                                              doall)]
                                  [relation-class-id related-object-ids])))
                         (into {}))
@@ -23,7 +23,7 @@
 
 (defn classes [object]
   (->> object
-       raw/object->id!
+       raw/object->id
        raw/classes
        (map raw/id->object)
        (into #{})))
@@ -37,7 +37,7 @@
   "represent knowlage about objects"
   [objects]
   (->> objects
-       (map raw/object->id!)
+       (map raw/object->id)
        (map raw/repr-object)
        (into #{})))
 
@@ -45,7 +45,7 @@
   "represent knowlage about objects"
   [objects]
   (->> objects
-       (map raw/object->id!)
+       (map raw/object->id)
        (map (fn [id]
               [(raw/repr-object id)
                (->> (raw/classes id)
@@ -56,8 +56,6 @@
 (defn is-instance?
   ([cls] (partial is-instance? cls))
   ([cls obj]
-        (prn :is-instance? obj cls)
-   (let [obj-id (raw/object->id! obj)
-         cls-id (raw/object->id! cls)]
-     (prn :is-instance? obj-id cls-id)
+   (let [cls-id (raw/object->id cls)
+         obj-id (raw/object->id obj)]
      (raw/is-instance? cls-id obj-id))))

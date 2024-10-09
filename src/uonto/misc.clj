@@ -2,7 +2,7 @@
   (:require
    [uonto.raw :as raw]))
 
-(defmacro experiment
+#_(defmacro experiment
   "Experiment with ontology model and clean result on the exit."
   [& body]
   `(let [object-tmp#     @raw/*objects
@@ -10,3 +10,13 @@
      (try ~@body
           (finally (reset! raw/*objects    object-tmp#)
                    (reset! raw/*object->id object->id-tmp#)))))
+
+#_(defmacro with-isolated-onto
+  "Experiment with ontology model and clean result on the exit."
+  [& body]
+  `(binding [raw/*objects    (atom @raw/*objects)
+             raw/*object->id (atom @raw/*object->id)]
+      ~@body
+     ))
+
+

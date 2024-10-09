@@ -1,7 +1,6 @@
 (ns uonto.raw-test
   (:require
    [clojure.test :as t :refer [deftest is]]
-   [uonto.misc :as misc]
    [uonto.raw :as raw]))
 
 (deftest pretty-core-object-test
@@ -24,8 +23,8 @@
                    raw/no-core))))
 
 (deftest def-object-and-object-selector-test
-  (misc/experiment
-   (let [c (raw/object->id! :c)]
+  (raw/with-onto {}
+   (let [c (raw/object->id :c)]
      (is (= c
             (raw/def-object! c {raw/core:is-instance [raw/core:class]})))
      (is (= {:c                #{:core/class},
@@ -48,9 +47,9 @@
      D
      E
   "
-  (misc/experiment
-   (let [[A B C D E :as clss] (map raw/object->id! [:A :B :C :D :E])
-         [a b c d e :as objs] (map raw/object->id! [:a :b :c :d :e])]
+  (raw/with-onto {}
+   (let [[A B C D E :as clss] (map raw/object->id [:A :B :C :D :E])
+         [a b c d e :as objs] (map raw/object->id [:a :b :c :d :e])]
      (doall (map (fn [cls] (raw/def-object! cls {raw/core:is-instance [raw/core:class]}))
                  clss))
      (doall (map (fn [cls obj] (raw/def-object! obj {raw/core:is-instance [cls]}))
