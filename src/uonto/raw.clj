@@ -30,24 +30,32 @@
 
 ;; state
 
-#_(def ^:dynamic *onto-state
-  (atom {:objects {}
-         :object->id {}}
-        :validator #(s/valid? ::onto-state %)))
+(def ^:dynamic *inside-onto?* false)
 
-(def ^:dynamic *onto-state
+(def ^:dynamic *onto-state*
   (atom {:objects {}
          :object->id {}}
         :validator #(s/valid? ::onto-state %)))
 
 (defmacro with-onto
   "Experiment with ontology model and clean result on the exit."
-  [m & body]
-  `(binding [*onto-state (atom @*onto-state)]
-      ~@body))
+  [{onto    :onto
+    isolate :isolate
+    return  :return
+    :or {isolate true
+         return :result}} & body]
+  `(binding [*inside-onto?* true
+             *onto-state* (if ~isolate
+                            (atom @*onto-state*)
+                            *onto-state*)]
+     (let [result# (do ~@body)]
+       (case ~return
+         :result result#
+         :onto   @*onto-state*))))
 
 (defn object->id [obj]
-  (let [id (get-in @*onto-state [:object->id obj])]
+  (assert *inside-onto?* "should be called inside with-onto macro")
+  (let [id (get-in @*onto-state* [:object->id obj])]
     (cond
       (some? id) id
 
@@ -57,16 +65,19 @@
           (object->id (mapv object->id obj)))
 
       :else
-      (do (swap! *onto-state (fn [onto-state]
-                               (let [id (count (:object->id onto-state))]
-                                 (-> onto-state
-                                     (assoc-in [:object->id obj] id)
-                                     (assoc-in [:objects id] #{})))))
+      (do (swap! *onto-state* (fn [onto-state]
+                                (let [id (count (:object->id onto-state))]
+                                  (-> onto-state
+                                      (assoc-in [:object->id obj] id)
+                                      (assoc-in [:objects id] #{})))))
           (object->id obj)))))
 
+;; split write and read only usage
+
 (defn id->object [id]
-  (if (< id (count (:objects @*onto-state)))
-    (->> (:object->id @*onto-state)
+  (assert *inside-onto?* "should be called inside with-onto macro")
+  (if (< id (count (:objects @*onto-state*)))
+    (->> (:object->id @*onto-state*)
          (filter (fn [[_ i]] (= i id)))
          first first)
     (throw (ex-info "object id is not found" {:id id}))))
@@ -74,8 +85,9 @@
 (defn classes
   "get list of the object class"
   [id]
+  (assert *inside-onto?* "should be called inside with-onto macro")
   (s/assert ::object-id id)
-  (get-in @*onto-state [:objects id]))
+  (get-in @*onto-state* [:objects id]))
 
 ;; Representation
 
@@ -132,7 +144,7 @@
 ;; ;; Object selectors
 
 (defn all-objects []
-  (keys (:objects @*onto-state)))
+  (keys (:objects @*onto-state*)))
 
 (defn objects []
   (->> (all-objects)
@@ -144,7 +156,6 @@
 
 (defn instances [class-id]
   (s/assert ::object-id class-id)
-  (prn class-id)
   (->> (all-objects)
        (filter #(contains? (classes %) class-id))
        (into [])))
@@ -176,16 +187,9 @@
 
 ;; Basic classes
 
-(def core:class       (object->id :core/class))
-(def core:is-instance (object->id :core/is-instance))
-(def core:is-subclass (object->id :core/is-subclass))
-
-
-
+(declare core:class core:is-instance core:is-subclass)
 
 (s/def ::is-class #(contains? (classes %) core:class))
-
-
 
 (defn def-object! [object-id relations]
   (s/assert ::object-id object-id)
@@ -193,7 +197,7 @@
   (let [is-instance-of (get relations core:is-instance)]
     (->> is-instance-of
          (map (fn [class-id]
-                (swap! *onto-state
+                (swap! *onto-state*
                        (fn [onto-state]
                          (update-in onto-state [:objects object-id] conj class-id)))))
          doall)
@@ -203,17 +207,21 @@
                      (map (fn [second-obj-id]
                             (let [rel-object [object-id second-obj-id]
                                   rel-object-id (object->id rel-object)]
-                              (swap! *onto-state
+                              (swap! *onto-state*
                                      update-in [:objects rel-object-id]
                                      conj rel-class-id))))
                      doall)))
          doall)
     object-id))
 
+(with-onto {:isolate false}
+  (def core:class       (object->id :core/class))
+  (def core:is-instance (object->id :core/is-instance))
+  (def core:is-subclass (object->id :core/is-subclass))
 
-(def-object! core:class {core:is-instance [core:class]})
-(def-object! core:is-instance {core:is-instance [core:class]})
-(def-object! core:is-subclass {core:is-instance [core:class]})
+  (def-object! core:class {core:is-instance [core:class]})
+  (def-object! core:is-instance {core:is-instance [core:class]})
+  (def-object! core:is-subclass {core:is-instance [core:class]}))
 
 (defn infer-transitive-subclasses! []
   (let [is-subclasses         (->> (tuples)
