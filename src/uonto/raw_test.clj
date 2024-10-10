@@ -21,7 +21,26 @@
                               raw/core:is-subclass])))
 
     (is (empty? (->> (raw/all-objects)
-                     raw/no-core)))))
+                     raw/remove-core)))))
+
+(deftest with-onto-test
+  (let [*onto (raw/with-onto {:isolate true :return :*onto}
+                (raw/def-object! (raw/object->id :foo) {})
+                (is (= [6] (->> (raw/all-objects) raw/remove-core))))]
+
+    (is (= 42 (raw/with-onto {:isolate true :*onto *onto}
+                (is (= [6] (->> (raw/all-objects) raw/remove-core)))
+                42)))
+
+    (raw/with-onto {}
+      (is (= [] (->> (raw/all-objects) raw/remove-core))))
+
+    (raw/with-onto {:isolate false :*onto *onto}
+      (raw/def-object! (raw/object->id :bar) {})
+      (is (= [6 7] (->> (raw/all-objects) raw/remove-core))))
+
+    (raw/with-onto {:isolate false :*onto *onto}
+      (is (= [6 7] (->> (raw/all-objects) raw/remove-core))))))
 
 (deftest def-object-and-object-selector-test
   (raw/with-onto {:isolate true}
@@ -30,16 +49,16 @@
              (raw/def-object! c {raw/core:is-instance [raw/core:class]})))
       (is (= {:c                #{:core/class},
               [:c :core/class]  #{:core/is-instance}}
-             (-> (raw/all-objects) raw/no-core raw/repr-verbose)))
+             (-> (raw/all-objects) raw/remove-core raw/repr-verbose)))
 
       (is (= {:c                #{:core/class}}
-             (-> (raw/objects) raw/no-core raw/repr-verbose)))
+             (-> (raw/abstract-objects) raw/remove-core raw/repr-verbose)))
 
       (is (= {[:c :core/class]  #{:core/is-instance}}
-             (-> (raw/tuples) raw/no-core raw/repr-verbose)))
+             (-> (raw/tuples) raw/remove-core raw/repr-verbose)))
 
       (is (= {:c                #{:core/class}}
-             (-> (raw/instances raw/core:class) raw/no-core raw/repr-verbose))))))
+             (-> (raw/instances raw/core:class) raw/remove-core raw/repr-verbose))))))
 
 (deftest class-hierarchy-test
   "

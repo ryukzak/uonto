@@ -28,8 +28,13 @@
        (map raw/id->object)
        (into #{})))
 
-(defn objects []
-  (->> (raw/objects)
+(defn information-objects []
+  (->> (raw/information-objects)
+       (map raw/id->object)
+       (into #{})))
+
+(defn abstract-objects []
+  (->> (raw/abstract-objects)
        (map raw/id->object)
        (into #{})))
 

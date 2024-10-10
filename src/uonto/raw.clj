@@ -39,19 +39,20 @@
 
 (defmacro with-onto
   "Experiment with ontology model and clean result on the exit."
-  [{onto    :onto
+  [{*onto    :*onto
     isolate :isolate
     return  :return
     :or {isolate true
          return :result}} & body]
-  `(binding [*inside-onto?* true
-             *onto-state* (if ~isolate
-                            (atom @*onto-state*)
-                            *onto-state*)]
-     (let [result# (do ~@body)]
-       (case ~return
-         :result result#
-         :onto   @*onto-state*))))
+  `(let [*onto# (or ~*onto *onto-state*)]
+     (binding [*inside-onto?* true
+               *onto-state* (if ~isolate
+                              (atom @*onto#)
+                              *onto#)]
+       (let [result# (do ~@body)]
+         (case ~return
+           :result result#
+           :*onto   *onto-state*)))))
 
 (defn object->id [obj]
   (assert *inside-onto?* "should be called inside with-onto macro")
@@ -76,6 +77,7 @@
 
 (defn id->object [id]
   (assert *inside-onto?* "should be called inside with-onto macro")
+  (s/assert ::object-id id)
   (if (< id (count (:objects @*onto-state*)))
     (->> (:object->id @*onto-state*)
          (filter (fn [[_ i]] (= i id)))
@@ -146,13 +148,17 @@
 (defn all-objects []
   (keys (:objects @*onto-state*)))
 
-(defn objects []
+(defn information-objects []
   (->> (all-objects)
-       (filter #(not (coll? (id->object %))))))
+       (filter (comp string? id->object))))
+
+(defn abstract-objects []
+  (->> (all-objects)
+       (filter (comp keyword? id->object))))
 
 (defn tuples []
   (->> (all-objects)
-       (filter #(vector? (id->object %)))))
+       (filter (comp vector? id->object))))
 
 (defn instances [class-id]
   (s/assert ::object-id class-id)
@@ -160,18 +166,18 @@
        (filter #(contains? (classes %) class-id))
        (into [])))
 
-(defn- is-single-core? [id]
+(defn- is-core-object? [id]
   (let [obj (id->object id)]
     (and (keyword? obj)
          (= "core" (namespace obj)))))
 
 (defn- is-core? [id]
-  (or (is-single-core? id)
+  (or (is-core-object? id)
       (let [obj (id->object id)]
         (and (vector? obj)
-             (every? is-single-core? obj)))))
+             (every? is-core-object? obj)))))
 
-(defn no-core
+(defn remove-core
   "remove all :core/* objects and tuples with :core/* objects."
   [obj-ids]
   (s/assert (s/coll-of ::object-id) obj-ids)
@@ -214,14 +220,16 @@
          doall)
     object-id))
 
-(with-onto {:isolate false}
-  (def core:class       (object->id :core/class))
-  (def core:is-instance (object->id :core/is-instance))
-  (def core:is-subclass (object->id :core/is-subclass))
+(def *core
+  (with-onto {:isolate false
+              :return :*onto}
+    (def core:class       (object->id :core/class))
+    (def core:is-instance (object->id :core/is-instance))
+    (def core:is-subclass (object->id :core/is-subclass))
 
-  (def-object! core:class {core:is-instance [core:class]})
-  (def-object! core:is-instance {core:is-instance [core:class]})
-  (def-object! core:is-subclass {core:is-instance [core:class]}))
+    (def-object! core:class {core:is-instance [core:class]})
+    (def-object! core:is-instance {core:is-instance [core:class]})
+    (def-object! core:is-subclass {core:is-instance [core:class]})))
 
 (defn infer-transitive-subclasses! []
   (let [is-subclasses         (->> (tuples)

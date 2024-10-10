@@ -120,13 +120,12 @@
             code-concept (->> (h/classes code-id)
                               (filter #(h/is-instance? code-system %))
                               first)
-
-            display (->> (h/objects)
+            display (->> (h/information-objects)
                          (filter #(h/is-instance? :display %))
                          (filter #(h/is-instance? code-concept %))
                          first)
 
-            designations (->> (h/objects)
+            designations (->> (h/information-objects)
                               (filter #(h/is-instance? :designation %))
                               (filter #(h/is-instance? code-concept %))
                               (map (fn [design]
