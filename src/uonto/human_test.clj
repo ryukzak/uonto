@@ -6,6 +6,8 @@
    [uonto.misc :as misc]
    [uonto.raw :as raw]))
 
+;; [ ] Codable concept with version
+
 (s/check-asserts true)
 
 (deftest class-hierarchy-test
@@ -57,8 +59,6 @@
       (h/def-object! :code-system    {:core/is-instance [:core/class]})
       (h/def-object! :code-system-id {:core/is-instance [:core/class]})
 
-      (prn :classes :code-system 1 (h/classes :code-system))
-
       (h/def-object! :code-value   {:core/is-instance [:core/class]})
       (h/def-object! :display      {:core/is-instance [:core/class]})
       (h/def-object! :designation  {:core/is-instance [:core/class]})
@@ -100,9 +100,6 @@
         {:core/is-instance [:c/id-1.1 :display
                             :designation :languages/en]}))
 
-   ;; (clojure.pprint/pprint @raw/*onto-state)
-   ;; (h/def-object! :code-system    {:core/is-instance [:core/class]})
-
     (defn validate-code [{:keys [system code]}]
       (let [[code-system & ambiguous]
             (->> (h/classes system)
@@ -113,17 +110,20 @@
                       (h/is-instance? code-system code))}))
 
     (defn lookup [{system-id :system code-id :code}]
-      (let [[code-system & ambiguous-system]
+      (let [code-system
             (->> (h/classes system-id)
-                 (filter (h/is-instance? :code-system)))
+                 (filter #(h/is-instance? :code-system %))
+                 misc/singleton-unwrap)
 
-            code-concept (->> (h/classes code-id)
-                              (filter #(h/is-instance? code-system %))
-                              first)
+            code-concept
+            (->> (h/classes code-id)
+                 (filter #(h/is-instance? code-system %))
+                 misc/singleton-unwrap)
+
             display (->> (h/information-objects)
-                         (filter #(h/is-instance? :display %))
-                         (filter #(h/is-instance? code-concept %))
-                         first)
+                          (filter #(h/is-instance? :display %))
+                          (filter #(h/is-instance? code-concept %))
+                          misc/singleton-unwrap)
 
             designations (->> (h/information-objects)
                               (filter #(h/is-instance? :designation %))
@@ -131,13 +131,13 @@
                               (map (fn [design]
                                      [(->> (h/classes design)
                                            (filter #(h/is-instance? :languages %))
-                                           first)
+                                           misc/singleton-unwrap)
                                       design]))
                               (into {})
                               doall)]
-        {:name system-id
-         :display display
-         :designation  designations}))
+        {:name        system-id
+         :display     display
+         :designation designations}))
 
     (is (= {:result true} (validate-code {:system "C"
                                           :code "73211009"})))
