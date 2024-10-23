@@ -26,15 +26,14 @@
     id))
 
 (defn id->object [onto id]
-  ;; (assert *inside-onto?* "should be called inside with-onto macro")
-  ;; (s/assert ::object-id id)
+  (s/assert ::object-id id)
   (if (< id (count (:object->id onto)))
     (->> (:object->id onto)
          (filter (fn [[_ i]] (= i id)))
          first first)
     (throw (ex-info "object id is not found" {:id id}))))
 
-(defn register-object [onto object & {:keys [auto-register]}]
+(defn register-object [onto object & {:keys [deep-register]}]
   (s/assert ::object object)
   (let [id (try-object->id onto object)
         new-id (count (:object->id onto))]
@@ -42,7 +41,7 @@
       (some? id) (assoc onto :value id)
 
       (s/valid? ::tuple-object object)
-      (let [onto (if auto-register
+      (let [onto (if deep-register
                    (reduce (fn [st obj] (register-object st obj :register-elements true))
                            onto object)
                    onto)]
@@ -100,10 +99,12 @@
 (defn def-object [onto object relations]
   (-> onto
       (register-object object)
-      (classify-object object (:core/is-instance relations))
+      (classify-object object (concat (:core/is-instance relations)
+                                    (:with-default-classes onto)))
       (flip-reduce (fn [onto [class bs]]
                      (register-relations onto class object bs))
-                   (dissoc relations :core/is-instance))))
+                   (dissoc relations :core/is-instance))
+      (assoc :value object)))
 
 (defn object-classes [onto object]
   (->> (get-in onto [:classification (object->id onto object)])
@@ -121,15 +122,6 @@
 (defn abstract-objects    [onto] (->> onto all-objects (filter #(s/valid? ::abstract-object    %)) (into #{})))
 (defn non-tuples          [onto] (->> onto all-objects (remove #(s/valid? ::tuple-object       %)) (into #{})))
 (defn tuples              [onto] (->> onto all-objects (filter #(s/valid? ::tuple-object       %)) (into #{})))
-
-#_(defn remove-tuple-classifications [onto]
-    (->> (tuples onto)
-         (map (fn [tuple]
-                (let [tuple-id (object->id onto tuple)]
-                  (update-in onto [:classification tuple-id] dissoc :core/is-instance))))
-         (reduce (fn [st [tuple-id classification]]
-                   (assoc st :classification classification))
-                 onto)))
 
 (def base
   (-> {}
@@ -180,16 +172,19 @@
                      new-instances)
         (assoc :value new-instances))))
 
-(defn unify [a-onto b-onto]
-  (-> a-onto
-      (flip-reduce (fn [ab-onto object]
-                     (register-object ab-onto object))
-                   (all-objects b-onto))
-      (flip-reduce (fn [ab-onto [object classes]]
-                     (let [class-ids (map (partial object->id ab-onto) classes)]
-                       (update-in ab-onto [:classification (object->id ab-onto object)]
-                                  #(if (empty? %)
-                                     (set class-ids)
-                                     (into % class-ids)))))
-                   (->> (all-objects b-onto)
-                        (object-classification b-onto)))))
+(defn unify [a-onto b-onto & other]
+  (let [onto (-> a-onto
+                 (flip-reduce (fn [ab-onto object]
+                                (register-object ab-onto object :deep-register true))
+                              (all-objects b-onto))
+                 (flip-reduce (fn [ab-onto [object classes]]
+                                (let [class-ids (map (partial object->id ab-onto) classes)]
+                                  (update-in ab-onto [:classification (object->id ab-onto object)]
+                                             #(if (empty? %)
+                                                (set class-ids)
+                                                (into % class-ids)))))
+                              (->> (all-objects b-onto)
+                                   (object-classification b-onto))))]
+    (if (empty? other)
+      onto
+      (apply unify onto other))))
