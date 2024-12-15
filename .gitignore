@@ -1,4 +1,5 @@
 .lsp
-.clj-kondo
+.clj-kondo/.cache
 .cpcache
 .nrepl-port
+.DS_Store

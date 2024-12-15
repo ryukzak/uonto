@@ -1,9 +1,7 @@
-(ns uonto.misc
-  (:require
-   [uonto.raw :as raw]))
+(ns uonto.misc)
 
-(defn singleton-unwrap [coll]
-  (when (< 1 (count coll))
+(defn singleton-unwrap! [coll]
+  (when-not (= 1 (count coll))
     (throw (ex-info "Expected singleton collection" {:coll coll})))
   (first coll))
 

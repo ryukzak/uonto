@@ -1,0 +1,3 @@
+{:config-in-dir true
+ :lint-as {uonto.core/with-classes-> clojure.core/->}
+ :config-in-call {clojure.test/deftest {:ignore [:inline-def]}}}
