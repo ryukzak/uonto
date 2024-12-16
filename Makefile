@@ -2,16 +2,16 @@ all: format lint test
 
 
 repl:
-	clj -M:test:nrepl:refactor
+	clojure -M:test:nrepl:refactor
 
 format:
-	clj -M:format fix
+	clojure -M:format fix
 
 format-check:
-	clj -M:format check
+	clojure -M:format check
 
 lint:
-	clj -M:lint
+	clojure -M:lint
 
 test:
-	clj -M:test -d src
+	clojure -M:test -d src
