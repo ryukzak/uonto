@@ -26,6 +26,7 @@
 (s/def ::object-id-set (s/coll-of ::object-id :kind set?))
 
 (s/def ::abstract-object    keyword?)
+(s/def ::abstract-objects   (s/coll-of ::abstract-object))
 (s/def ::information-object (s/or :string-object string?
                                   :number-object number?))
 (s/def ::tuple-object       (s/coll-of ::object :kind vector?))

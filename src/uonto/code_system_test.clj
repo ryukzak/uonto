@@ -12,8 +12,8 @@
 (defn def-instance! [onto object & [classes relation-class->objects]]
   (s/assert ::core/onto onto)
   (s/assert ::core/object object)
-  (s/assert (s/or :no-classes nil?
-                  :classes    (s/coll-of ::core/abstract-object)) classes)
+  (s/assert (s/or :no-classes          nil?
+                  :classes             ::core/abstract-objects) classes)
   (s/assert (s/or :no-relation-classes nil?
                   :relation-classes    ::core/relation-class->objects)
             relation-class->objects)
@@ -24,7 +24,7 @@
 
 (defn select-by-classes [onto classes & [objects]]
   (s/assert ::core/onto onto)
-  (s/assert (s/coll-of ::core/abstract-object) classes)
+  (s/assert ::core/abstract-objects classes)
   (s/assert (s/or :all-objects nil?
                   :selected-objects ::core/objects) objects)
   (->> (or objects (core/all-objects onto))
@@ -35,7 +35,7 @@
        (into #{})))
 
 ;; TODO: support multiple inheritance. Return [[A] [B C] [D]]
-(defn sort-subclasses-upward [onto concepts]
+(defn subclasses-upward-hierarchy [onto concepts]
   (s/assert ::core/onto onto)
   (s/assert ::core/objects concepts)
   (let [hierarchy-tuple
@@ -53,10 +53,18 @@
                   concept
                   (->> concepts
                        (remove (fn [concept] (contains? subclasses concept)))
-                       (misc/singleton-unwrap!))]
+                       (misc/unwrap-singleton!))]
               (recur (remove #(-> % second (= concept)) tuples)
                      (remove #(= % concept) concepts)
                      (cons concept acc)))))]
+
+    (when-not (or (= 1 (count concepts))
+                  (= (set (apply concat hierarchy-tuple))
+                     (set concepts)))
+      (throw (ex-info "Concepts to build subclasses upward hierarchy should be connected by :core/is-subclass."
+                      {:concepts concepts
+                       :hierarchy-tuple hierarchy-tuple})))
+
     sorted-concepts))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -129,7 +137,7 @@
                           [name
                            (->> (core/object-classes onto name)
                                 (select-by-classes onto [:code-system/code-system])
-                                (misc/singleton-unwrap!))]))
+                                (misc/unwrap-singleton!))]))
                    (into {}))]
     names))
 
@@ -174,7 +182,7 @@
                                   [:code-system/concept.code code-system]
                                   [value])]
     (when-not (empty? result)
-      (misc/singleton-unwrap! result))))
+      (misc/unwrap-singleton! result))))
 
 (defn- select-in-accordance-to-class-hierarchy [onto index objects]
   (->> objects
@@ -188,7 +196,7 @@
   (let [display (->> (select-by-classes onto [concept :code-system/concept.display])
                      (select-in-accordance-to-class-hierarchy onto index)
                      doall
-                     (misc/singleton-unwrap!))
+                     (misc/unwrap-singleton!))
         designations (->> (select-by-classes onto [concept :code-system/concept.designation])
                           (select-in-accordance-to-class-hierarchy onto index))
         designation-by-lang
@@ -196,7 +204,7 @@
              (map (fn [lang]
                     (let [txt (select-by-classes onto [lang] designations)]
                       (when (seq txt)
-                        [lang (misc/singleton-unwrap! txt)]))))
+                        [lang (misc/unwrap-singleton! txt)]))))
              (into {}))]
     {:concept      concept
      :display      display
@@ -205,15 +213,16 @@
 (defn describe-code [onto code-system value]
   (let [concepts (->> (core/object-classes onto value)
                       (select-by-classes onto [:code-system/concept code-system])
-                      (sort-subclasses-upward onto))
+                      (subclasses-upward-hierarchy onto))
 
-        concept-descs
-        (->> concepts reverse
+        concept-descriptions
+        (->> concepts
+             reverse
              (map-indexed (fn [index concept]
                             (describe-concept onto (inc index) concept)))
              reverse)]
-    {:primary     (first concept-descs)
-     :secondaries (into [] (rest concept-descs))}))
+    {:primary     (first concept-descriptions)
+     :secondaries (into [] (rest concept-descriptions))}))
 
 (deftest describe-code-test
   (let [onto code-system:c:concepts
