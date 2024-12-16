@@ -7,14 +7,20 @@
             [clojure.spec.alpha :as s]
             [clojure.test :as t :refer [deftest is]]))
 
-;; helpers
+;; TODO: move to core
 
-(defn def-instance! [onto object & classes]
-  (core/def-object! onto object {:core/is-instance classes}))
-
-(defn def-class [onto object & {:keys [instance-of subclass-of]}]
-  (core/def-object! onto object {:core/is-instance (concat [:core/class] instance-of)
-                                 :core/is-subclass subclass-of}))
+(defn def-instance! [onto object & [classes relation-class->objects]]
+  (s/assert ::core/onto onto)
+  (s/assert ::core/object object)
+  (s/assert (s/or :no-classes nil?
+                  :classes    (s/coll-of ::core/abstract-object)) classes)
+  (s/assert (s/or :no-relation-classes nil?
+                  :relation-classes    ::core/relation-class->objects)
+            relation-class->objects)
+  (let [all-classes (concat classes
+                            (:core/is-instance relation-class->objects))]
+    (core/def-object! onto object (assoc relation-class->objects
+                                         :core/is-instance all-classes))))
 
 (defn select-by-classes [onto classes & [objects]]
   (s/assert ::core/onto onto)
@@ -28,133 +34,7 @@
                          classes)))
        (into #{})))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def language
-  ^{:doc "Objects for multilanguage support."}
-  (-> core/base
-      (def-class :language/_itself)
-      (def-instance! :language/en :language/_itself :core/class)
-      (def-instance! :language/sp :language/_itself :core/class)
-      (def-instance! :language/fr :language/_itself :core/class)))
-
-(defn languages [onto]
-  (select-by-classes onto [:language/_itself]))
-
-(defn select-by-lang [onto lang objects]
-  (s/assert ::core/onto onto)
-  (s/assert ::core/objects objects)
-  (s/assert ::core/abstract-object lang)
-  (select-by-classes onto [lang] objects))
-
-(deftest language-utils-test
-  (let [onto (-> language
-                 (def-instance! "in en" :language/en)
-                 (def-instance! "in sp" :language/sp)
-                 (def-instance! "in fr" :language/fr))
-        objects (core/non-tuples onto)]
-    (is (= #{:language/en :language/sp :language/fr}
-           (languages onto)))
-    (is (= #{"in en"}
-           (select-by-lang onto :language/en objects)))
-    (is (= {"in en" #{:language/en}}
-           (->> objects
-                (select-by-lang onto :language/en)
-                (core/object-classification onto))))))
-
-(def code-system
-  ^{:doc "Objects for code-system and related object representation."}
-  (-> core/base
-      (def-class :code-system/-itself)
-      (assoc :with-default-classes [:code-system/-itself :core/class])
-      (def-class :code-system/concept)
-      (def-class :code-system/code-system)
-      (def-class :code-system/name)
-      (def-class :code-system/title)
-      (def-class :code-system/concept-code)
-      (def-class :code-system/concept:display)
-      (def-class :code-system/concept:designation)
-      (dissoc :with-default-classes)))
-
-(defn select-codesystems [onto]
-  (select-by-classes onto [:code-system/code-system]))
-
-(def code-system:c
-  ^{:doc "Objects for C code-system itself."}
-  (-> (core/unify language code-system)
-      (def-instance! :c/-itself :code-system/code-system :core/class)
-      (core/with-classes-> [:c/-itself]
-        (core/with-classes-> [:core/class]
-          (def-class :c/concept:code        :subclass-of [:code-system/concept-code])
-          (def-class :c/concept:display     :subclass-of [:code-system/concept:display])
-          (def-class :c/concept:designation :subclass-of [:code-system/concept:designation]))
-        (def-instance! "C name"  :code-system/name)
-        (def-instance! "C title" :code-system/title :language/en))))
-
-(deftest select-codesystems-test
-  (is (= #{:c/-itself}
-         (select-codesystems code-system:c)))
-  (is (= #{}
-         (select-codesystems code-system))))
-
-(defn name->code-system! [onto]
-  (s/assert ::core/onto onto)
-  (let [names (->> (select-by-classes onto [:code-system/name])
-                   (map (fn [name]
-                          [name
-                           (->> (core/object-classes onto name)
-                                (select-by-classes onto [:code-system/code-system])
-                                (misc/singleton-unwrap!))]))
-                   (into {}))]
-    names))
-
-(defn resolve-code-system [onto name]
-  (get (name->code-system! onto) name))
-
-(deftest resolve-code-system-test
-  (is (= {"C name" :c/-itself}
-         (name->code-system! code-system:c)))
-  (is (= :c/-itself
-         (resolve-code-system code-system:c "C name"))))
-
-(def code-system:c:concepts
-  ^{:doc "Object inside C code-system."}
-  (-> (core/unify code-system:c language)
-      (core/with-classes-> [:c/-itself]
-        (def-class :c:concept/-73211009 :instance-of [:code-system/concept])
-        (core/with-classes-> [:c:concept/-73211009]
-          (def-instance! "73211009" :c/concept:code)
-          (def-instance! "Diabetes mellitus (disorder)"
-            :c/concept:display
-            :c/concept:designation :language/en)
-          (def-instance! "Diabetes mellitus (trastorno)"
-            :c/concept:designation :language/sp))
-
-        (def-class :c:concept/-126877002
-          :instance-of [:code-system/concept]
-          :subclass-of [:c:concept/-73211009])
-        (core/with-classes-> [:c:concept/-126877002]
-          (def-instance! "126877002" :c/concept:code)
-          (def-instance! "Disorder of glucose metabolism (disorder)" :c/concept:display)
-          (def-instance! "Disorder of glucose metabolism (disorder)" :c/concept:designation :language/en)))
-
-      (core/infer-all)))
-
-;; TODO: add inferred? check for onto before any select.
-
-(defn resolve-code [onto code-system value]
-  (s/assert ::core/onto onto)
-  (s/assert ::core/abstract-object code-system)
-  (s/assert ::core/information-object value)
-  (let [result (select-by-classes onto
-                                  [:code-system/concept-code code-system]
-                                  [value])]
-    (when-not (empty? result)
-      (misc/singleton-unwrap! result))))
-
-;; TODO: how to show codes with subclasses?
-
-;; TODO: move to core
+;; TODO: support multiple inheritance. Return [[A] [B C] [D]]
 (defn sort-subclasses-upward [onto concepts]
   (s/assert ::core/onto onto)
   (s/assert ::core/objects concepts)
@@ -179,6 +59,123 @@
                      (cons concept acc)))))]
     sorted-concepts))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def language
+  ^{:doc "Objects for multilanguage support."}
+  (-> core/base
+      (def-instance! :language/-itself [:core/class])
+      (core/with-classes-> [:language/-itself :core/class]
+        (def-instance! :language/en)
+        (def-instance! :language/sp)
+        (def-instance! :language/fr))))
+
+(defn languages [onto]
+  (select-by-classes onto [:language/-itself]))
+
+(defn select-by-lang [onto lang objects]
+  (s/assert ::core/onto onto)
+  (s/assert ::core/objects objects)
+  (s/assert ::core/abstract-object lang)
+  (select-by-classes onto [lang] objects))
+
+(deftest language-utils-test
+  (let [onto (-> language
+                 (def-instance! "in en" [:language/en])
+                 (def-instance! "in sp" [:language/sp])
+                 (def-instance! "in fr" [:language/fr]))
+        objects (core/non-tuples onto)]
+    (is (= #{:language/en :language/sp :language/fr}
+           (languages onto)))
+    (is (= #{"in en"}
+           (select-by-lang onto :language/en objects)))
+    (is (= {"in en" #{:language/en}}
+           (->> objects
+                (select-by-lang onto :language/en)
+                (core/object-classification onto))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def code-system
+  ^{:doc "Objects for code-system and related object representation."}
+  (-> core/base
+      (def-instance! :code-system/-itself [:core/class])
+      (core/with-classes-> [:code-system/-itself :core/class]
+        (def-instance! :code-system/code-system)
+        (def-instance! :code-system/name)
+        (def-instance! :code-system/title)
+
+        (def-instance! :code-system/concept)
+        (def-instance! :code-system/concept.code)
+        (def-instance! :code-system/concept.display)
+        (def-instance! :code-system/concept.designation))))
+
+(def code-system:c
+  ^{:doc "Objects for C code-system itself."}
+  (-> (core/unify language code-system)
+      (def-instance! :c/-itself [:code-system/code-system :core/class])
+      (core/with-classes-> [:c/-itself :core/class]
+        (def-instance! :c/concept.code        [] {:core/is-subclass [:code-system/concept.code]})
+        (def-instance! :c/concept.display     [] {:core/is-subclass [:code-system/concept.display]})
+        (def-instance! :c/concept.designation [] {:core/is-subclass [:code-system/concept.designation]}))
+      (core/with-classes-> [:c/-itself]
+        (def-instance! "C name"  [:code-system/name])
+        (def-instance! "C title" [:code-system/title :language/en]))))
+
+(defn- name->code-system! [onto]
+  (s/assert ::core/onto onto)
+  (let [names (->> (select-by-classes onto [:code-system/name])
+                   (map (fn [name]
+                          [name
+                           (->> (core/object-classes onto name)
+                                (select-by-classes onto [:code-system/code-system])
+                                (misc/singleton-unwrap!))]))
+                   (into {}))]
+    names))
+
+(defn resolve-code-system [onto name]
+  (get (name->code-system! onto) name))
+
+(deftest resolve-code-system-test
+  (is (= {"C name" :c/-itself}
+         (name->code-system! code-system:c)))
+  (is (= :c/-itself
+         (resolve-code-system code-system:c "C name"))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def code-system:c:concepts
+  ^{:doc "Object inside C code-system."}
+  (-> (core/unify code-system:c language)
+      (core/with-classes-> [:c/-itself]
+        (def-instance! :c/concept->73211009 [:code-system/concept])
+        (core/with-classes-> [:c/concept->73211009]
+          (def-instance! "73211009" [:c/concept.code])
+          (def-instance! "Diabetes mellitus (disorder)"
+            [:c/concept.display
+             :c/concept.designation :language/en])
+          (def-instance! "Diabetes mellitus (trastorno)"
+            [:c/concept.designation :language/sp]))
+
+        (def-instance! :c/concept->126877002 [:code-system/concept]
+          {:core/is-subclass [:c/concept->73211009]})
+        (core/with-classes-> [:c/concept->126877002]
+          (def-instance! "126877002" [:c/concept.code])
+          (def-instance! "Disorder of glucose metabolism (disorder)" [:c/concept.display])
+          (def-instance! "Disorder of glucose metabolism (disorder)" [:c/concept.designation :language/en])))
+      ;; TODO: how not to forget?
+      (core/infer-all)))
+
+(defn resolve-code [onto code-system value]
+  (s/assert ::core/onto onto)
+  (s/assert ::core/abstract-object code-system)
+  (s/assert ::core/information-object value)
+  (let [result (select-by-classes onto
+                                  [:code-system/concept.code code-system]
+                                  [value])]
+    (when-not (empty? result)
+      (misc/singleton-unwrap! result))))
+
 (defn- select-in-accordance-to-class-hierarchy [onto index objects]
   (->> objects
        (filter #(let [display-classes (core/object-classes onto %)
@@ -188,11 +185,11 @@
        doall))
 
 (defn- describe-concept [onto index concept]
-  (let [display (->> (select-by-classes onto [concept :c/concept:display])
+  (let [display (->> (select-by-classes onto [concept :code-system/concept.display])
                      (select-in-accordance-to-class-hierarchy onto index)
                      doall
                      (misc/singleton-unwrap!))
-        designations (->> (select-by-classes onto [concept :c/concept:designation])
+        designations (->> (select-by-classes onto [concept :code-system/concept.designation])
                           (select-in-accordance-to-class-hierarchy onto index))
         designation-by-lang
         (->> (languages onto)
@@ -221,19 +218,19 @@
 (deftest describe-code-test
   (let [onto code-system:c:concepts
         code-system (resolve-code-system onto "C name")]
-    (is (= {:primary {:concept :c:concept/-73211009,
+    (is (= {:primary {:concept :c/concept->73211009,
                       :display "Diabetes mellitus (disorder)"
                       :designations
                       {:language/en "Diabetes mellitus (disorder)",
                        :language/sp "Diabetes mellitus (trastorno)"}},
             :secondaries []}
            (describe-code onto code-system "73211009")))
-    (is (= {:primary {:concept :c:concept/-126877002,
+    (is (= {:primary {:concept :c/concept->126877002,
                       :display "Disorder of glucose metabolism (disorder)",
                       :designations
                       {:language/en "Disorder of glucose metabolism (disorder)"}},
             :secondaries
-            [{:concept :c:concept/-73211009,
+            [{:concept :c/concept->73211009,
               :display "Diabetes mellitus (disorder)",
               :designations
               {:language/en "Diabetes mellitus (disorder)",
@@ -276,29 +273,3 @@
             #:language{:en "Diabetes mellitus (disorder)",
                        :sp "Diabetes mellitus (trastorno)"}}
            (lookup onto {:system "C name" :code "73211009"})))))
-
-(comment
-
-  (defn id-consistency [onto]
-    (doseq [object (keys (:object->id onto))]
-      (assert (= object (core/id->object! onto (core/object->id! onto object))))))
-
-  (id-consistency core/base)
-
-  (core/object->id! code-system:c :code-system/name)
-  (core/id->object! code-system:c 10)
-
-  (->> (:object->id code-system:c)
-       (filter (fn [[_ i]] (= i 10)))
-       first first)
-
-  (core/object->id! code-system:c "C")
-  (core/id->object! code-system:c 10)
-  (core/id->object! code-system:c 22)
-  (get (:classification code-system:c) 37)
-
-  (core/object-classes code-system:c "C")
-  #_(clojure.pprint/pprint (->> code-system:c
-                                (core/non-tuples)
-                                (core/object-classification code-system:c)
-                                (core/remove-core-from-classification))))
