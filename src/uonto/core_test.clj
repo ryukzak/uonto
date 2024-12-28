@@ -55,8 +55,8 @@
             :baz        #{},
             [:bar :baz] #{:rel-class}}
            (->> onto
-                core/all-objects
-                (core/object-classification onto)))))
+                core/select-all-objects
+                (core/classification onto)))))
   (let [onto (-> {}
                  (core/register-object :rel-class)
                  (core/register-object :bar)
@@ -67,8 +67,8 @@
             :baz        #{},
             [:bar :baz] #{:rel-class}}
            (->> onto
-                core/all-objects
-                (core/object-classification onto))))))
+                core/select-all-objects
+                (core/classification onto))))))
 
 (deftest classify-object-test
   (testing "classify object"
@@ -85,8 +85,8 @@
               :bar              #{},
               [:foo :bar]       #{:core/is-instance}}
              (->> onto
-                  core/all-objects
-                  (core/object-classification onto))))))
+                  core/select-all-objects
+                  (core/classification onto))))))
 
   (testing "classify relation"
     (let [onto (-> {}
@@ -101,8 +101,8 @@
               [:foo :bar]        #{:bar},
               [[:foo :bar] :bar] #{:core/is-instance}}
              (->> onto
-                  core/all-objects
-                  (core/object-classification onto)))))))
+                  core/select-all-objects
+                  (core/classification onto)))))))
 
 (deftest def-object-test
   (let [onto (-> {}
@@ -113,12 +113,12 @@
     (is (= {:core/class       #{},
             :core/is-instance #{:core/class}}
            (->> onto
-                core/abstract-objects
-                (core/object-classification onto))))
+                core/select-abstract-objects
+                (core/classification onto))))
     (is (= {[:core/is-instance :core/class] #{:core/is-instance}}
            (->> onto
-                core/tuples
-                (core/object-classification onto)))))
+                core/select-tuples
+                (core/classification onto)))))
   (testing "with default classes"
     (let [onto (-> core/base
                    (core/def-object! :foo {})
@@ -130,9 +130,9 @@
               :bar #{:core/class :foo}
               :baz #{}}
              (->> onto
-                  core/non-tuples
-                  (core/object-classification onto)
-                  (core/remove-core-from-classification))))))
+                  core/select-non-tuples
+                  (core/classification onto)
+                  (core/remove-core))))))
 
   (testing "with default classes by with-default-classes"
     (let [onto (-> core/base
@@ -147,9 +147,9 @@
               :bas #{:core/class}
               :bat #{}}
              (->> onto
-                  core/non-tuples
-                  (core/object-classification onto)
-                  core/remove-core-from-classification))))))
+                  core/select-non-tuples
+                  (core/classification onto)
+                  core/remove-core))))))
 
 (deftest subclass-hierarchy-test
   "
@@ -184,7 +184,7 @@
             [:E :B] #{:core/is-subclass},
             [:E :A] #{:core/is-subclass},
             [:E :C] #{:core/is-subclass}}
-           (core/object-classification onto+transitive-subclasses infer-subclasses)))
+           (core/classification onto+transitive-subclasses infer-subclasses)))
 
     (is (empty? (:value (core/infer-transitive-subclasses onto+transitive-subclasses))))
 
@@ -197,7 +197,7 @@
             [:e :B] #{:core/is-instance}
             [:e :C] #{:core/is-instance}
             [:e :D] #{:core/is-instance}}
-           (core/object-classification onto+infer-instances infer-instances)))
+           (core/classification onto+infer-instances infer-instances)))
 
     (is (empty? (:value (core/infer-subclasses-instances onto+infer-instances))))
 
@@ -205,7 +205,10 @@
     (is (= #{:A :B}          (core/object-classes onto+infer-instances :b)))
     (is (= #{:A :C}          (core/object-classes onto+infer-instances :c)))
     (is (= #{:A :B :C :D}    (core/object-classes onto+infer-instances :d)))
-    (is (= #{:A :B :C :D :E} (core/object-classes onto+infer-instances :e)))))
+    (is (= #{:A :B :C :D :E} (core/object-classes onto+infer-instances :e)))
+
+    (is (= [#{:E} #{:D} #{:B :C} #{:A}]
+           (core/subclasses-upward-hierarchy onto #{:A :B :C :D :E})))))
 
 (deftest unify-test
   (let [a-onto (-> core/base
@@ -220,11 +223,11 @@
 
     (is (= #{:core/class :core/is-instance :core/is-subclass
              :a1 :a2 :b1 :b2}
-           (core/non-tuples ab-onto)))
+           (core/select-non-tuples ab-onto)))
 
     (is (= {[:a1 :a2] #{:core/is-instance}
             [:b1 :b2] #{:core/is-instance}
             [:core/is-instance :core/class] #{:core/is-instance}
             [:core/is-subclass :core/class] #{:core/is-instance}}
-           (->> (core/tuples ab-onto)
-                (core/object-classification ab-onto))))))
+           (->> (core/select-tuples ab-onto)
+                (core/classification ab-onto))))))

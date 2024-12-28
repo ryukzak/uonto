@@ -13,30 +13,31 @@
 
   - classification -- human representation as map: `{object #{class1}}`
 
-
   onto is a map with private structure except :value key, which used
   like result in state monad to return specific value.
   "
   (:require
-   [clojure.spec.alpha :as s]))
+   [clojure.spec.alpha :as s]
+   [clojure.set :as set]))
 
 (s/check-asserts true)
 
 (s/def ::object-id     int?)
-(s/def ::object-id-set (s/coll-of ::object-id :kind set?))
+(s/def ::object-id-set (s/every ::object-id :kind set?))
 
 (s/def ::abstract-object    keyword?)
-(s/def ::abstract-objects   (s/coll-of ::abstract-object))
+(s/def ::abstract-objects   (s/every ::abstract-object))
 (s/def ::information-object (s/or :string-object string?
-                                  :number-object number?))
-(s/def ::tuple-object       (s/coll-of ::object :kind vector?))
+                                  :number-object number?
+                                  :boolean-object boolean?))
+(s/def ::tuple-object       (s/every ::object :kind vector?))
 
 (s/def ::object (s/or :abstract-object    ::abstract-object
                       :information-object ::information-object
                       :tuple-object       ::tuple-object))
 
-(s/def ::objects    (s/coll-of ::object))
-(s/def ::object-set (s/coll-of ::object :kind set?))
+(s/def ::objects    (s/every ::object))
+(s/def ::object-set (s/every ::object :kind set?))
 
 (s/def :onto/object->id     (s/map-of ::object ::object-id))
 (s/def :onto/classification (s/map-of ::object-id ::object-id-set))
@@ -53,13 +54,15 @@
 (s/def ::relation-class->objects (s/map-of ::object (s/or :empty   nil?
                                                           :objects ::objects)))
 
+(defn uniq-number [onto] (count (:object->id onto)))
+
 (defn object->id [onto object]
   (get-in onto [:object->id object]))
 
 (def ^{:doc "on unknown id return this amount of objects"}
   known-object-limit 20)
 
-(declare non-tuples)
+(declare select-non-tuples)
 
 (defn object->id! [onto object]
   (s/assert ::onto onto)
@@ -67,11 +70,10 @@
   (let [id (object->id onto object)]
     (when (nil? id)
       (throw (ex-info "Can't resolve object to id"
-                      (let [objects (non-tuples onto)
-                            n (count objects)]
-                        (cond->
-                         {:object             object
-                          :some-known-objects (take known-object-limit objects)}
+                      (let [non-tuples (select-non-tuples onto)
+                            n          (count non-tuples)]
+                        (cond-> {:object             object
+                                 :some-known-objects (take known-object-limit non-tuples)}
                           (> n known-object-limit)
                           (assoc :not-listed-object-count (- n known-object-limit)))))))
     id))
@@ -165,13 +167,13 @@
 
 (defn add-default-classes [onto & classes]
   (s/assert ::onto onto)
-  (s/assert (s/coll-of ::abstract-object) classes)
+  (s/assert (s/every ::abstract-object) classes)
   (update onto :with-default-classes (fn [default-classes]
                                        (into default-classes classes))))
 
 (defn remove-default-classes [onto & classes]
   (s/assert ::onto onto)
-  (s/assert (s/coll-of ::abstract-object) classes)
+  (s/assert (s/every ::abstract-object) classes)
   (let [classes (set classes)]
     (update onto :with-default-classes (fn [default-classes]
                                          (remove #(contains? classes %) default-classes)))))
@@ -189,6 +191,19 @@
                    (dissoc relation-class->objects :core/is-instance))
       (assoc :value object)))
 
+(defn def-instance! [onto object & [classes relation-class->objects]]
+  (s/assert ::onto onto)
+  (s/assert ::object object)
+  (s/assert (s/or :no-classes          nil?
+                  :classes             ::abstract-objects) classes)
+  (s/assert (s/or :no-relation-classes nil?
+                  :relation-classes    ::relation-class->objects)
+            relation-class->objects)
+  (let [all-classes (concat classes
+                            (:core/is-instance relation-class->objects))]
+    (def-object! onto object (assoc relation-class->objects
+                                    :core/is-instance all-classes))))
+
 (defn object-classes [onto object]
   (->> (get-in onto [:classification (object->id onto object)])
        (map #(id->object! onto %))
@@ -199,8 +214,8 @@
        (map #(id->object! onto %))
        (into #{})))
 
-(defn object-classification [onto selected-objects]
-  (s/assert ::object-set selected-objects)
+(defn classification [onto selected-objects]
+  (s/assert ::objects selected-objects)
   (->> selected-objects
        (map (fn [object]
               [object (object-classes onto object)]))
@@ -210,7 +225,7 @@
   (and (keyword? object)
        (= "core" (namespace object))))
 
-(defn remove-core-from-classification [classification]
+(defn remove-core [classification]
   (s/assert ::classification classification)
   (->> classification
        (remove (fn [[object _classes]]
@@ -219,11 +234,53 @@
 
        (into {})))
 
-(defn all-objects         [onto] (s/assert ::onto onto) (->> onto :object->id keys (into #{})))
-(defn information-objects [onto] (s/assert ::onto onto) (->> onto all-objects (filter #(s/valid? ::information-object %)) (into #{})))
-(defn abstract-objects    [onto] (s/assert ::onto onto) (->> onto all-objects (filter #(s/valid? ::abstract-object    %)) (into #{})))
-(defn tuples              [onto] (s/assert ::onto onto) (->> onto all-objects (filter #(s/valid? ::tuple-object       %)) (into #{})))
-(defn non-tuples          [onto] (s/assert ::onto onto) (->> onto all-objects (remove #(s/valid? ::tuple-object       %)) (into #{})))
+(defn select-all-objects [onto]
+  (s/assert ::onto onto)
+  (->> onto :object->id (keys) (into #{})))
+
+(defn select-information-objects [onto & [objects]]
+  (s/assert ::onto onto)
+  (s/assert (s/or :all-objects nil?
+                  :selected-objects ::objects) objects)
+  (->> (or objects (select-all-objects onto))
+       (filter #(s/valid? ::information-object %))
+       (into #{})))
+
+(defn select-abstract-objects [onto & [objects]]
+  (s/assert ::onto onto)
+  (s/assert (s/or :all-objects nil?
+                  :selected-objects ::objects) objects)
+  (->> (or objects (select-all-objects onto))
+       (filter #(s/valid? ::abstract-object %))
+       (into #{})))
+
+(defn select-tuples [onto & [objects]]
+  (s/assert ::onto onto)
+  (s/assert (s/or :all-objects nil?
+                  :selected-objects ::objects) objects)
+  (->> (or objects (select-all-objects onto))
+       (filter #(s/valid? ::tuple-object %))
+       (into #{})))
+
+(defn select-non-tuples [onto & [objects]]
+  (s/assert ::onto onto)
+  (s/assert (s/or :all-objects nil?
+                  :selected-objects ::objects) objects)
+  (->> (or objects (select-all-objects onto))
+       (remove #(s/valid? ::tuple-object %))
+       (into #{})))
+
+(defn select-by-classes [onto classes & [objects]]
+  (s/assert ::onto onto)
+  (s/assert ::abstract-objects classes)
+  (s/assert (s/or :all-objects nil?
+                  :selected-objects ::objects) objects)
+  (->> (or objects (select-all-objects onto))
+       (filter (fn [object]
+                 (every? (fn [class]
+                           (contains? (object-classes onto object) class))
+                         classes)))
+       (into #{})))
 
 (def base
   (-> {}
@@ -246,7 +303,7 @@
   - `(register-relations :core/is-subclass A C)`
   "
   [onto]
-  (let [subclass-tuples (->> (tuples onto)
+  (let [subclass-tuples (->> (select-tuples onto)
                              (filter #(contains? (object-classes onto %) :core/is-subclass))
                              (into #{}))
         down->tops (->> subclass-tuples
@@ -285,9 +342,9 @@
   "
   [onto]
   (let [new-instances
-        (set (for [[down top :as tuple] (tuples onto)
+        (set (for [[down top :as tuple] (select-tuples onto)
                    :when (contains? (object-classes onto tuple) :core/is-subclass)
-                   object (all-objects onto)
+                   object (select-all-objects onto)
                    :when (contains? (object-classes onto object) down)
                    :when (not (contains? (object-classes onto object) top))]
                [object top]))]
@@ -296,6 +353,38 @@
                        (classify-object! st object [class]))
                      new-instances)
         (assoc :value new-instances))))
+
+(defn subclasses-upward-hierarchy [onto concepts]
+  (s/assert ::onto onto)
+  (s/assert ::objects concepts)
+  (let [hierarchy-tuple
+        (->> (select-tuples onto)
+             (select-by-classes onto [:core/is-subclass])
+             (filter (fn [tuple] (some #(contains? concepts %) tuple))))
+
+        sorted-concepts
+        (loop [tuples hierarchy-tuple
+               concepts concepts
+               acc '()]
+          (if (empty? concepts)
+            acc
+            (let [subclasses (->> tuples (map first) (into #{}))
+                  selected-concepts
+                  (->> concepts
+                       (remove (fn [concept] (contains? subclasses concept)))
+                       (into #{}))]
+              (recur (remove (fn [[_down top]] (contains? selected-concepts top)) tuples)
+                     (set/difference concepts selected-concepts)
+                     (cons selected-concepts acc)))))]
+
+    (when-not (or (= 1 (count concepts))
+                  (= (set (apply concat hierarchy-tuple))
+                     (set concepts)))
+      (throw (ex-info "Concepts to build subclasses upward hierarchy should be connected by :core/is-subclass."
+                      {:concepts concepts
+                       :hierarchy-tuple hierarchy-tuple})))
+
+    (into [] sorted-concepts)))
 
 (defn infer-all [onto]
   (-> onto
@@ -311,15 +400,15 @@
   (let [onto (-> a-onto
                  (flip-reduce (fn [ab-onto object]
                                 (register-object ab-onto object :deep-register true))
-                              (all-objects b-onto))
+                              (select-all-objects b-onto))
                  (flip-reduce (fn [ab-onto [object classes]]
                                 (let [class-ids (map (partial object->id! ab-onto) classes)]
                                   (update-in ab-onto [:classification (object->id! ab-onto object)]
                                              #(if (empty? %)
                                                 (set class-ids)
                                                 (into % class-ids)))))
-                              (->> (all-objects b-onto)
-                                   (object-classification b-onto))))]
+                              (->> (select-all-objects b-onto)
+                                   (classification b-onto))))]
     (if (empty? other)
       onto
       (apply unify onto other))))
