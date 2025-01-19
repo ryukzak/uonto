@@ -162,7 +162,7 @@
   "
   (let [object->class {:a :A, :b :B, :c :C, :d :D, :e :E}
         onto (-> core/base
-                 (core/flip-reduce (fn [st [object class]]
+                 (core/->reduce (fn [st [object class]]
                                      (-> st
                                          (core/register-object class)
                                          (core/classify-object! class [:core/class])

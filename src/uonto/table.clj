@@ -1,6 +1,8 @@
 (ns uonto.table
   "
-  That namespace contains functions for table representation.
+  That namespace contains functions for table representation. The main problem -- how to represent
+
+
 
   It has two level of representation:
 
@@ -40,7 +42,7 @@
 (comment
   "Table representation. Classes for that:"
 
-  (core/select-by-classes table [:table/-itself :core/class])
+  (core/select-by-classes base-onto [:table/-itself :core/class])
   #{:table/table      ;; for all defined tables
     :table/table.name ;; for their names
 
@@ -52,7 +54,7 @@
 
     :table/row}
 
-  (core/select-by-classes table [:table/table])
+  (core/select-by-classes base-onto [:table/table])
   ;; => #{}
 
   " Define table:
@@ -63,7 +65,7 @@
   |----|-------|
   "
 
-  (def onto (-> table
+  (def onto (-> base-onto
                 (create "users" [{:name "id" :type "int" :nullable false}
                                  {:name "name" :type "string" :nullable true}])))
 
@@ -85,7 +87,7 @@
 
 (s/def ::columns (s/every (s/keys :req-un [::name ::type ::nullable])))
 
-(def table
+(def base-onto
   ^{:doc "Objects for table and related object representation."}
   (-> core/base
       (core/def-instance! :table/-itself [:core/class])
@@ -112,7 +114,7 @@
 
 (defn row-value-class [column row]
   (keyword (namespace column)
-           (str (name column) "." (name row))))
+           (str (name row) "." (name column))))
 
 (defn create [onto name columns]
   (s/assert ::columns columns)
@@ -162,6 +164,12 @@
                     :column-value column-value}])))
          (into {}))))
 
+(defn table-column [onto table column-name]
+   (get-in (table-columns onto table) [column-name :column]))
+
+(defn table-column-value [onto table column-name]
+  (column->column-value (table-column onto table column-name)))
+
 (defn table-rows [onto table]
   (core/select-by-classes onto [table :table/row]))
 
@@ -209,29 +217,33 @@
                      column-value (column->column-value column)
                      row-value    (row-value-class column row)]
                  (-> onto
-                     (core/def-instance! row-value [:core/class column-value])
-                     (core/def-instance! value [row-value]))))
+                     (core/def-instance! row-value [:core/class])
+                     (core/def-instance! value [column row-value column-value]))))
              values))))))
 
 (defn select [onto table-name]
   (let [table   (table-itself onto table-name)
         columns (table-columns onto table)
         rows    (table-rows onto table)]
+    (when (nil? table)
+      (throw (ex-info "Table not found"
+                      {:table-name table-name
+                       :known-tables (core/object-classes onto [:table/table.name])})))
     (mapv
      (fn [row]
        (->> columns
-            (map (fn [[column-name {:keys [column]}]]
-                   (let [row-value    (row-value-class column row)
-                         values (core/select-by-classes onto [row-value row])]
-                     (when-not (empty? values)
-                       [column-name
-                        (-> (core/select-by-classes onto [row-value row])
-                            (misc/unwrap-singleton!))]))))
+            (keep (fn [[column-name {:keys [column]}]]
+                    (let [row-value (row-value-class column row)
+                          values    (core/select-by-classes onto [row-value row])]
+                      (when-not (empty? values)
+                        [(keyword column-name)
+                         (-> (core/select-by-classes onto [row-value row])
+                             (misc/unwrap-singleton!))]))))
             (into {})))
      rows)))
 
 (comment
-  (let [onto (-> table
+  (let [onto (-> base-onto
                  (create "staff" [{:name "id" :type "int" :nullable false}
                                   {:name "name" :type "string" :nullable true}]))]
     (->> (core/select-non-tuples onto)

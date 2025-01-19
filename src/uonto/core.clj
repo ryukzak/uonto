@@ -20,7 +20,7 @@
    [clojure.spec.alpha :as s]
    [clojure.set :as set]))
 
-(s/check-asserts true)
+(s/check-asserts false)
 
 (s/def ::object-id     int?)
 (s/def ::object-id-set (s/every ::object-id :kind set?))
@@ -155,7 +155,7 @@
             (register-relation st relation-class a b))
           onto bs))
 
-(defn flip-reduce [st f coll] (reduce f st coll))
+(defn ->reduce [st f coll] (reduce f st coll))
 
 (defmacro with-classes-> [onto classes & body]
   (let [classes (vec classes)]
@@ -186,7 +186,7 @@
       (register-object object)
       (classify-object! object (concat (:core/is-instance relation-class->objects)
                                        (:with-default-classes onto)))
-      (flip-reduce (fn [st [class bs]]
+      (->reduce (fn [st [class bs]]
                      (register-relations st class object bs))
                    (dissoc relation-class->objects :core/is-instance))
       (assoc :value object)))
@@ -349,7 +349,7 @@
                    :when (not (contains? (object-classes onto object) top))]
                [object top]))]
     (-> onto
-        (flip-reduce (fn [st [object class]]
+        (->reduce (fn [st [object class]]
                        (classify-object! st object [class]))
                      new-instances)
         (assoc :value new-instances))))
@@ -398,10 +398,10 @@
   "
   [a-onto b-onto & other]
   (let [onto (-> a-onto
-                 (flip-reduce (fn [ab-onto object]
+                 (->reduce (fn [ab-onto object]
                                 (register-object ab-onto object :deep-register true))
                               (select-all-objects b-onto))
-                 (flip-reduce (fn [ab-onto [object classes]]
+                 (->reduce (fn [ab-onto [object classes]]
                                 (let [class-ids (map (partial object->id! ab-onto) classes)]
                                   (update-in ab-onto [:classification (object->id! ab-onto object)]
                                              #(if (empty? %)
