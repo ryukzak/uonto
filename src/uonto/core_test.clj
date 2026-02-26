@@ -163,12 +163,12 @@
   (let [object->class {:a :A, :b :B, :c :C, :d :D, :e :E}
         onto (-> core/base
                  (core/->reduce (fn [st [object class]]
-                                     (-> st
-                                         (core/register-object class)
-                                         (core/classify-object! class [:core/class])
-                                         (core/register-object object)
-                                         (core/classify-object! object [class])))
-                                   object->class)
+                                  (-> st
+                                      (core/register-object class)
+                                      (core/classify-object! class [:core/class])
+                                      (core/register-object object)
+                                      (core/classify-object! object [class])))
+                                object->class)
                  (core/def-object! :B {:core/is-subclass [:A]})
                  (core/def-object! :C {:core/is-subclass [:A]})
                  (core/def-object! :D {:core/is-subclass [:B :C]})

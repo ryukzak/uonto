@@ -78,10 +78,7 @@
   "Objects, which describe our table: name (information object), and
   columns (classes to recognize column settings)."
 
-  (core/select-by-classes onto [:table.users/column.id])
-
-
-  )
+  (core/select-by-classes onto [:table.users/column.id]))
 
 ;; TODO: join
 
@@ -165,7 +162,7 @@
          (into {}))))
 
 (defn table-column [onto table column-name]
-   (get-in (table-columns onto table) [column-name :column]))
+  (get-in (table-columns onto table) [column-name :column]))
 
 (defn table-column-value [onto table column-name]
   (column->column-value (table-column onto table column-name)))

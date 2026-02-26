@@ -2,7 +2,7 @@
   (:require [uonto.table :as table]
             [clojure.test :as t :refer [deftest is testing]]
             [uonto.core :as core]
-                        [uonto.misc :as misc]))
+            [uonto.misc :as misc]))
 
 (deftest table-test
   (let [onto (-> table/base-onto
@@ -55,8 +55,6 @@
 
     (is (= [{:id 1, :name "John Doe"}]
            (table/select onto "user")))))
-
-
 
 (deftest staff-example
   (let [schema-onto

@@ -187,8 +187,8 @@
       (classify-object! object (concat (:core/is-instance relation-class->objects)
                                        (:with-default-classes onto)))
       (->reduce (fn [st [class bs]]
-                     (register-relations st class object bs))
-                   (dissoc relation-class->objects :core/is-instance))
+                  (register-relations st class object bs))
+                (dissoc relation-class->objects :core/is-instance))
       (assoc :value object)))
 
 (defn def-instance! [onto object & [classes relation-class->objects]]
@@ -350,8 +350,8 @@
                [object top]))]
     (-> onto
         (->reduce (fn [st [object class]]
-                       (classify-object! st object [class]))
-                     new-instances)
+                    (classify-object! st object [class]))
+                  new-instances)
         (assoc :value new-instances))))
 
 (defn subclasses-upward-hierarchy [onto concepts]
@@ -399,16 +399,16 @@
   [a-onto b-onto & other]
   (let [onto (-> a-onto
                  (->reduce (fn [ab-onto object]
-                                (register-object ab-onto object :deep-register true))
-                              (select-all-objects b-onto))
+                             (register-object ab-onto object :deep-register true))
+                           (select-all-objects b-onto))
                  (->reduce (fn [ab-onto [object classes]]
-                                (let [class-ids (map (partial object->id! ab-onto) classes)]
-                                  (update-in ab-onto [:classification (object->id! ab-onto object)]
-                                             #(if (empty? %)
-                                                (set class-ids)
-                                                (into % class-ids)))))
-                              (->> (select-all-objects b-onto)
-                                   (classification b-onto))))]
+                             (let [class-ids (map (partial object->id! ab-onto) classes)]
+                               (update-in ab-onto [:classification (object->id! ab-onto object)]
+                                          #(if (empty? %)
+                                             (set class-ids)
+                                             (into % class-ids)))))
+                           (->> (select-all-objects b-onto)
+                                (classification b-onto))))]
     (if (empty? other)
       onto
       (apply unify onto other))))
