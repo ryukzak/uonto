@@ -46,6 +46,8 @@ FHIR — группа "резиновых" стандартов (R3, R4, R5, R6.
 
 ## The Real-Scale of Interoperability Problem
 
+![](slides/fig/alien-tech.png)
+
 - FHIR — это "лёгкий" случай: один домен (здравоохранение), относительно стандартные сущности
 - А что если нужно интегрировать данные через **весь жизненный цикл** сложной системы?
   - Проектирование → Производство → Поставка → Эксплуатация → Утилизация
@@ -78,6 +80,7 @@ FHIR — группа "резиновых" стандартов (R3, R4, R5, R6.
 
 ### Пример: верхняя онтология ISO 15926
 
+![](slides/fig/babel-fish.png)
 ![](slides/fig/geek-and-poke-how-to-create-a-stable-data-model.png)
 
 - **Thing** — корень: всё, о чём можно говорить
@@ -271,14 +274,99 @@ Chris Partridge, «Business Objects: Re-Engineering for Re-Use». Рассказ
     - Роли — это классы, а не таблицы. Добавление новой роли = добавление нового класса, **а не новой структуры данных**
 - В масштабе ISO 15926: тот же насос может быть одновременно «оборудованием на обслуживании», «объектом страхования» и «элементом проектной спецификации» — и это одна запись
 
-TODO: опиши логическую парадигму, как перерабатываем сущности и субстанции: slides/fig/boro-logic-color-things.png slides/fig/boro-logic-multi-classification.png slides/fig/boro-logic-classes-minimisation.png
+----
 
-TODO: как моделируем отношения slides/fig/boro-logic-relations-many.png slides/fig/boro-logic-relations-many-to-many.png
+### Logical paradigm: атрибуты — это классы
 
-TODO: используй для повествования slides/fig/boro-logic-summary.png
+![](slides/fig/boro-logic-color-things.png)
 
-TODO: пробелма работы с изменениями slides/fig/boro-object-dynamic-extension.png
+- В substance-подходе COLOUR — это **атрибут** сущности CAR, с значениями RED / GREEN
+- В логической парадигме атрибутов нет. Есть только **классы** и **принадлежность**
+- RED и GREEN становятся классами: «Red Things» и «Green Things»
+- Конкретная красная машина — просто элемент пересечения классов «Cars» и «Red Things»
+- Никаких колонок, никаких схем — только множества и вхождение в них
 
-TODO: решение проблемы работы со временим slides/fig/boro-object-butterfly-new.png slides/fig/boro-object-banck-chairman-change.png slides/fig/boro-object-relation-in-time.png
+----
 
-TODO: slides/fig/babel-fish.png и slides/fig/alien-tech.png -- используй их в слайдах
+### Множественная классификация
+
+![](slides/fig/boro-logic-multi-classification.png)
+
+- Porky — конкретный кабан. В substance-подходе он экземпляр класса BOAR, который наследует PIG → ANIMAL
+- В логической парадигме: Porky принадлежит **одновременно** классам Pigs, Male Animals, Boars, Animals
+- Boars = пересечение Pigs и Male Animals — не отдельная «сущность», а **логическое следствие**
+- Иерархия наследования заменяется **сетью пересечений** классов
+
+![](slides/fig/boro-logic-classes-minimisation.png)
+
+- Слева (substance): жёсткая цепочка ANIMAL → PIG → BOAR, определённая на этапе проектирования
+- Справа (logical): плоская сеть классов Animals, Pigs, Male Animals — Porky входит во все нужные
+- **Иерархия исчезает**. Вместо неё — гибкая классификация, которую можно расширять без перепроектирования
+
+----
+
+### Отношения — тоже объекты
+
+![](slides/fig/boro-logic-relations-many.png)
+
+- Prince Charles «is a father of» Prince William и «is taller than» Prince William
+- В substance-подходе это атрибуты-ссылки. В логической парадигме — **упорядоченные пары (tuples)**
+- Пара ⟨Prince Charles, Prince William⟩ — самостоятельный объект
+- Эта пара принадлежит классу «Is a Father of» и одновременно классу «Is Taller Than»
+- Отношение — не клей между сущностями, а **полноценная вещь**, которую можно классифицировать
+
+![](slides/fig/boro-logic-relations-many-to-many.png)
+
+- Sue работает на Project #1 и управляет им
+- Пара ⟨Sue, Project #1⟩ принадлежит классу «Works On» и классу «Manages»
+- Промежуточная таблица (junction table) больше не нужна — tuple сам является объектом
+- Добавить новый тип отношения = добавить новый класс, **без изменения структуры данных**
+
+----
+
+### Итого: substance vs logical
+
+![](slides/fig/boro-logic-summary.png)
+
+- **Substance paradigm** оперирует четырьмя конструкциями: General Substance, Particular Substance, Non-Relational Attribute, Relational Attribute
+- **Logical paradigm** сводит всё к трём: Logical Objects (конкретные вещи), Logical Classes (множества), Logical Tuples (отношения как пары)
+- Атрибуты исчезли — их роль взяли на себя классы
+- Отношения перестали быть «клеем» — они стали объектами
+- Результат: **минимальный каркас**, который не ломается при расширении
+
+----
+
+### Но есть проблема: изменения
+
+![](slides/fig/boro-object-dynamic-extension.png)
+
+- Помидор — сначала зелёный (Green Things), потом красный (Red Things)
+- Классификация **изменилась во времени**: один и тот же объект переходит из одного класса в другой
+- Логическая парадигма работает с «вечными» множествами — в ней нет понятия «когда»
+- Если помидор принадлежит и Green Things, и Red Things — это противоречие
+- Нужен способ сказать: «принадлежит классу X **в период** T₁–T₂»
+
+----
+
+### Решение: вещи в пространстве-времени (4D extensionalism)
+
+![](slides/fig/boro-object-butterfly-new.png)
+
+- Лепидоптера — не «объект с меняющимися атрибутами», а **четырёхмерный объект**, протяжённый в пространстве и во времени
+- Caterpillar Time Slice и Butterfly Time Slice — **части** одного 4D-объекта, а не «состояния»
+- Каждый time slice классифицируется независимо: Caterpillar ∈ Caterpillars, Butterfly ∈ Butterflies
+- Противоречия нет: разные части вещи принадлежат разным классам
+
+![](slides/fig/boro-object-banck-chairman-change.png)
+
+- Mr Jones — председатель Natland Bank. Потом уходит в отставку, и председателем становится Mr Smith
+- В 4D: «Chairman of Natland Bank» — это отдельный пространственно-временной объект, который **пересекается** сначала с Mr Jones, потом с Mr Smith
+- Resignation Event и Appointment Event — границы (time slices) этого пересечения
+- Не нужно «менять значение поля chairman» — нужно зафиксировать, какие 4D-объекты пересекаются в какой период
+
+![](slides/fig/boro-object-relation-in-time.png)
+
+- Отношения тоже живут во времени: tuple ⟨Prince Charles, Prince William⟩ ∈ Father-Son Tuples
+- Оба участника — 4D-объекты (стрелки по оси TIME), и tuple связывает именно их
+- Отношение «отец-сын» существует не «вообще», а в конкретном пространственно-временном контексте
+- Вся модель становится единообразной: **вещи, классы, отношения — всё протяжено во времени**
