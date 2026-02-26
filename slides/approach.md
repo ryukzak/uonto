@@ -166,11 +166,35 @@ FHIR — группа "резиновых" стандартов (R3, R4, R5, R6.
 
 ----
 
-TODO: рассказывать будем как в книге: slides/fig/business-objects-re-engineering-for-re-use.jpg , Платон -> Аристотель -> Кантор -> BORO, Буль и Венн (Entity -> Substance -> Logical Paradigm -> 4d extensionalism). И извиниться за такой заход
+### Откуда это всё?
+
+![](slides/fig/business-objects-re-engineering-for-re-use.jpg)
+
+Chris Partridge, «Business Objects: Re-Engineering for Re-Use». Рассказывать будем как в книге — через эволюцию подходов к моделированию:
+
+1. **Entity paradigm** (Платон, IV в. до н.э.) — реляционная модель
+2. **Substance paradigm** (Аристотель, IV в. до н.э.) — ООП
+3. **Logical paradigm** (Буль, Венн, Кантор, XIX в.) — классификация без атрибутов
+4. **4D extensionalism** (Chris Partridge, 1990-е) — высшие онтологии (ISO 15926)
+
+Да, сейчас будет немного философии. Извините. Зато потом станет понятно, почему модели ломаются и как это чинить
 
 ----
 
-TODO сформулировать entity подход и показать что это по сути -- реляционная модель. slides/fig/boro-entity-reuse-in-application.png
+### Entity paradigm
+
+![](slides/fig/boro-entity-atribute-and-entity.png)
+
+- Мир устроен как **типы** и **экземпляры**: есть Entity Type (тип сущности) и Individual Entity (конкретная запись)
+- У типа есть Attribute Type (колонки), у экземпляра — Individual Attribute (значения)
+- Узнаёте? Это **таблица в БД**: тип = DDL, экземпляр = строка
+
+![](slides/fig/boro-entity-reuse-in-application.png)
+
+- Тип CAR порождает экземпляры MY CAR, JOHN'S CAR
+- Атрибут CAR COLOUR на уровне типа → конкретные значения RED, GREEN на уровне экземпляра
+- **Re-use**: новый экземпляр создаётся по шаблону типа — ровно как INSERT в таблицу
+- Проблема: какие типы (таблицы) выбрать? Это решение принимается на этапе проектирования и потом **очень дорого менять**
 
 ----
 
@@ -187,19 +211,50 @@ TODO сформулировать entity подход и показать что
 
 ----
 
-TODO сформулировать substance подход и показать что это по сути -- ООП. slides/fig/boro-substance-attributes.png
+### Substance paradigm
+
+![](slides/fig/boro-substance-attributes.png)
+
+- Аристотель добавил то, чего не было у Платона: **иерархию наследования**
+- Transport → Vehicle → Car — каждый уровень наследует и уточняет свойства родителя
+- Атрибуты (COLOUR: RED/GREEN) определяются на уровне типа и наследуются экземплярами
+- Узнаёте? Это **класс в ООП**: наследование, инкапсуляция, полиморфизм
+
+![](slides/fig/boro-substance-staff.png)
+
+- В реальном мире: Staff → Salesperson / Account Manager — иерархия подклассов
+- В ИС: три таблицы (STAFF, SALESPERSON, ACCOUNT MANAGER), связанные наследованием
+- Прогресс по сравнению с entity: один человек может быть в нескольких подклассах
+- Но проблема осталась: **иерархия наследования фиксирована** на этапе проектирования. Добавить новый подкласс = переписать код
 
 ----
 
-TODO сформулировать substance подход и показать что это по сути -- ООП. slides/fig/boro-substance-attributes.png slides/fig/boro-substance-staff.png
+### Как моделируются отношения?
+
+![](slides/fig/boro-substance-relations-primary-level.png)
+
+- В entity-подходе связь many-to-many = **промежуточная сущность** (Employee/Project) с атрибутами-ссылками
+- Sue работает на двух проектах → две записи: Sue/Project#1 и Sue/Project#2
+- Каждая связь — отдельный объект с атрибутами EMPLOYEE и PROJECT
+- Знакомо? Это **junction table** в реляционной модели, или **ассоциативная сущность** в ER-диаграмме
+- Отношение — не самостоятельная вещь, а лишь **клей между сущностями**
 
 ----
 
-TODO показать как моделируем отношения между вещами в entity и substance slides/fig/boro-substance-relations-primary-level.png
+### Как моделируются изменения?
 
-----
+![](slides/fig/boro-substance-arrow-changes.png)
 
-TODO показать как моделируем изменения и процессы в entity и substance: slides/fig/boro-substance-arrow-changes.png slides/fig/boro-substance-lepidopter-unchaniging.png
+- Стрела #12 летит из позиции P₁ в позицию P₂
+- В substance-подходе это **изменение атрибута**: POSITION меняется с P₁ на P₂
+- Сама субстанция (стрела) при этом «не меняется» — меняются только значения её свойств
+- Движение (motion) — не объект, а **переход между состояниями**
+
+![](slides/fig/boro-substance-lepidopter-unchaniging.png)
+
+- Лепидоптера: LEPIDOPTER остаётся одной и той же субстанцией, а CATERPILLAR → PUPA → BUTTERFLY — значения атрибута «фаза»
+- Но подождите: у гусеницы и бабочки **совершенно разные свойства**. Какие атрибуты наследовать от класса LEPIDOPTER?
+- Substance-подход упирается в то, что **субстанция должна быть неизменной**, а реальные вещи меняются радикально
 
 
 ----
