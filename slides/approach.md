@@ -270,3 +270,15 @@ Chris Partridge, «Business Objects: Re-Engineering for Re-Use». Рассказ
     - Вместо этого: **один объект** (конкретный человек) + **классификация** по ролям
     - Роли — это классы, а не таблицы. Добавление новой роли = добавление нового класса, **а не новой структуры данных**
 - В масштабе ISO 15926: тот же насос может быть одновременно «оборудованием на обслуживании», «объектом страхования» и «элементом проектной спецификации» — и это одна запись
+
+TODO: опиши логическую парадигму, как перерабатываем сущности и субстанции: slides/fig/boro-logic-color-things.png slides/fig/boro-logic-multi-classification.png slides/fig/boro-logic-classes-minimisation.png
+
+TODO: как моделируем отношения slides/fig/boro-logic-relations-many.png slides/fig/boro-logic-relations-many-to-many.png
+
+TODO: используй для повествования slides/fig/boro-logic-summary.png
+
+TODO: пробелма работы с изменениями slides/fig/boro-object-dynamic-extension.png
+
+TODO: решение проблемы работы со временим slides/fig/boro-object-butterfly-new.png slides/fig/boro-object-banck-chairman-change.png slides/fig/boro-object-relation-in-time.png
+
+TODO: slides/fig/babel-fish.png и slides/fig/alien-tech.png -- используй их в слайдах
