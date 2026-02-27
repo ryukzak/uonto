@@ -108,7 +108,7 @@
 
 <img src="/slides/fig/iso-15926-top-classes.png" style="max-height: 250px;">
 
-- **Thing** — всё, о чём можно говорить
+- **Thing** — всё, о чём можно говорить [link](https://bioportal.bioontology.org/ontologies/ENTITY?p=classes&conceptid=http%3A%2F%2Frds.posccaesar.org%2F2008%2F02%2FOWL%2FISO-15926-2_2003%23PointInTime)
     - **PossibleIndividual** — существует в пространстве-времени (насос P-101, пациент Иванов)
     - **AbstractObject** — вне пространства-времени
         - **Class** — множество («Центробежный насос», «Диагноз J06»)
