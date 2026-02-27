@@ -1,39 +1,14 @@
 (ns uonto.table
-  "
-  That namespace contains functions for table representation. The main problem -- how to represent
+  "Table representation on top of the ontology engine.
 
+  Represents relational tables as sets of ontological classes:
+  - Table itself is a class
+  - Columns are classes for values
+  - Rows are objects classified by table and row classes
+  - Cell values are objects at the intersection of column and row classes
 
-
-  It has two level of representation:
-
-  1. For tables.
-  2. For rows in it.
-
-  ```text
-
-
-
-
-           Users
-          ------
-  | id | name  |
-  |----|-------|
-  |  1 | Alice |
-  |  2 | Bob   |
-
-
-
-
-
-
-  ```
-
-
-
-  collision:
-  - between different rows;
-  - between different cell in one row.
-  "
+  Handles collisions between different rows and between cells in one row
+  by creating row-specific value classes."
   (:require [uonto.core :as core]
             [clojure.spec.alpha :as s]
             [clojure.set :as set]
@@ -100,9 +75,6 @@
 
         (core/def-instance! :table/row))))
 
-(defn reduce-on [val f coll]
-  (reduce f val coll))
-
 (defn itself [class-ns]
   (keyword class-ns "-itself"))
 
@@ -120,7 +92,7 @@
     (-> onto
         (core/def-instance! table-itself [:table/table])
         (core/def-instance! name [:table/table.name table-itself])
-        (reduce-on
+        (misc/->reduce
          (fn [onto {cname     :name
                     ctype     :type
                     cnullable :nullable :as _column}]
@@ -208,7 +180,7 @@
       (-> onto
           (core/def-instance! row [:table/row table])
           (core/with-classes-> [row table]
-            (reduce-on
+            (misc/->reduce
              (fn [onto [column-name value]]
                (let [column       (get-in columns [column-name :column])
                      column-value (column->column-value column)

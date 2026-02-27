@@ -5,7 +5,7 @@
   (:require [uonto.core :as core]
             [uonto.misc :as misc]
             [clojure.spec.alpha :as s]
-            [clojure.test :as t :refer [deftest is]]))
+            [clojure.test :refer [deftest is]]))
 
 (def language
   ^{:doc "Objects for multilanguage support."}

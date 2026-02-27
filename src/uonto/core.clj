@@ -18,7 +18,8 @@
   "
   (:require
    [clojure.spec.alpha :as s]
-   [clojure.set :as set]))
+   [clojure.set :as set]
+   [uonto.misc :as misc]))
 
 (s/check-asserts false)
 
@@ -155,8 +156,6 @@
             (register-relation st relation-class a b))
           onto bs))
 
-(defn ->reduce [st f coll] (reduce f st coll))
-
 (defmacro with-classes-> [onto classes & body]
   (let [classes (vec classes)]
     `(let [onto# ~onto]
@@ -186,9 +185,9 @@
       (register-object object)
       (classify-object! object (concat (:core/is-instance relation-class->objects)
                                        (:with-default-classes onto)))
-      (->reduce (fn [st [class bs]]
-                  (register-relations st class object bs))
-                (dissoc relation-class->objects :core/is-instance))
+      (misc/->reduce (fn [st [class bs]]
+                       (register-relations st class object bs))
+                     (dissoc relation-class->objects :core/is-instance))
       (assoc :value object)))
 
 (defn def-instance! [onto object & [classes relation-class->objects]]
@@ -349,9 +348,9 @@
                    :when (not (contains? (object-classes onto object) top))]
                [object top]))]
     (-> onto
-        (->reduce (fn [st [object class]]
-                    (classify-object! st object [class]))
-                  new-instances)
+        (misc/->reduce (fn [st [object class]]
+                         (classify-object! st object [class]))
+                       new-instances)
         (assoc :value new-instances))))
 
 (defn subclasses-upward-hierarchy [onto concepts]
@@ -398,17 +397,17 @@
   "
   [a-onto b-onto & other]
   (let [onto (-> a-onto
-                 (->reduce (fn [ab-onto object]
-                             (register-object ab-onto object :deep-register true))
-                           (select-all-objects b-onto))
-                 (->reduce (fn [ab-onto [object classes]]
-                             (let [class-ids (map (partial object->id! ab-onto) classes)]
-                               (update-in ab-onto [:classification (object->id! ab-onto object)]
-                                          #(if (empty? %)
-                                             (set class-ids)
-                                             (into % class-ids)))))
-                           (->> (select-all-objects b-onto)
-                                (classification b-onto))))]
+                 (misc/->reduce (fn [ab-onto object]
+                                  (register-object ab-onto object :deep-register true))
+                                (select-all-objects b-onto))
+                 (misc/->reduce (fn [ab-onto [object classes]]
+                                  (let [class-ids (map (partial object->id! ab-onto) classes)]
+                                    (update-in ab-onto [:classification (object->id! ab-onto object)]
+                                               #(if (empty? %)
+                                                  (set class-ids)
+                                                  (into % class-ids)))))
+                                (->> (select-all-objects b-onto)
+                                     (classification b-onto))))]
     (if (empty? other)
       onto
       (apply unify onto other))))

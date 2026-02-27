@@ -1,6 +1,7 @@
 (ns uonto.core-test
   (:require [uonto.core :as core]
-            [clojure.test :as t :refer [deftest is testing]]))
+            [uonto.misc :as misc]
+            [clojure.test :refer [deftest is testing]]))
 
 (deftest register-object-test
   (is (= {:object->id {:foo 0} :value 0}
@@ -162,7 +163,7 @@
   "
   (let [object->class {:a :A, :b :B, :c :C, :d :D, :e :E}
         onto (-> core/base
-                 (core/->reduce (fn [st [object class]]
+                 (misc/->reduce (fn [st [object class]]
                                   (-> st
                                       (core/register-object class)
                                       (core/classify-object! class [:core/class])
