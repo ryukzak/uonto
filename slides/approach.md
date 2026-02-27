@@ -354,7 +354,7 @@ Chris Partridge, «Business Objects: Re-Engineering for Re-Use»
 
 1. Logical + 4D: только **объекты** (кортежи — тоже объекты) и **классы**, протяжённые во времени
 1. Нет атрибутов — нет вопроса «атрибут или сущность?». Нет иерархии — нет конфликтов наследования. Нет мутаций — нет вопроса «когда обновлять?»
-1. Новая роль, новое отношение, новый период — просто **новый класс или новый time slice**, без изменения структуры данных
+1. Новый объект, класс, отношение, период, детализация — просто **новый класс или новый time slice**, без изменения структуры данных
 
 Одна проблема:
 
@@ -368,155 +368,191 @@ Chris Partridge, «Business Objects: Re-Engineering for Re-Use»
 
 ---
 
-## Как это работает на практике: моделируем таблицы
+## Практика: моделируем таблицы
 
-Попробуем применить всё сказанное к конкретной задаче. Возьмём обычные реляционные таблицы и покажем, как их представить через онтологию — без сущностей, без атрибутов, только объекты и классы.
-
-Реализация на Clojure: `uonto/core.clj` (движок онтологии) и `uonto/table.clj` (таблицы поверх него).
+Реализация на Clojure: [core.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/core.clj) + [table.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/table.clj)
 
 ----
 
-### Шаг 0: Базовые конструкции
-
-Весь движок онтологии строится на трёх примитивах:
-
-- **Объекты** — всё, что можно назвать: ключевые слова (`:table/column`), строки (`"Alice"`), числа (`42`), булевы значения (`true`)
-- **Классификация** — объект принадлежит одному или нескольким классам: `classify-object! onto obj [:class-a :class-b]`
-- **Tuples** — упорядоченные пары `[a b]`, которые сами являются объектами и тоже классифицируются
-
-Никаких типов, атрибутов, колонок или схем. Только объекты и множества.
+### Онтологическая база: три примитива
 
 ```clojure
-;; Базовая онтология: три встроенных класса
+;; (def-object! obj {relation-class [targets]})
+;; — зарегистрировать obj и создать кортежи [obj, target] ∈ relation-class
+
 (def base
   (-> {}
-      (register-object :core/class)
-      (register-object :core/is-instance)
-      (register-object :core/is-subclass)))
+      (register-object :core/class)        ;; класс всех классов
+      (register-object :core/is-instance)  ;; класс отношения «является экземпляром»
+      (register-object :core/is-subclass)  ;; класс отношения «является подклассом»
+      ;; is-instance является экземпляром class:
+      ;;   кортеж [:core/is-instance, :core/class] ∈ :core/is-instance
+      (def-object! :core/class       {:core/is-instance []})
+      (def-object! :core/is-instance {:core/is-instance [:core/class]})
+      (def-object! :core/is-subclass {:core/is-instance [:core/class]})))
 ```
+
+Всё остальное строится поверх этих трёх.
 
 ----
 
-### Шаг 1: Определение таблицы — схема как классы
+### База для представления таблиц
 
-Определим таблицу `users` с колонками `id` (int) и `name` (string):
+```clojure
+(def base-onto
+  (-> core/base
+      (core/def-instance! :table/-itself [:core/class])
+      (core/with-classes-> [:table/-itself :core/class]
+        (core/def-instance! :table/table)       ;; класс всех таблиц
+        (core/def-instance! :table/table.name)  ;; класс имён таблиц
+
+        (core/def-instance! :table/column)            ;; класс колонок
+        (core/def-instance! :table/column.name)       ;; класс имён колонок
+        (core/def-instance! :table/column.type)       ;; класс типов колонок
+        (core/def-instance! :table/column.nullable)   ;; класс nullable-флагов
+        (core/def-instance! :table/column.value-class) ;; класс для значений
+
+        (core/def-instance! :table/row))))  ;; класс строк
+```
+
+1. `with-classes->` — все объекты внутри автоматически классифицируются как `:table/-itself` и `:core/class`
+1. Таблица, колонка, строка — не структуры данных, а **классы**
+1. Метаданные (имя, тип, nullable) — тоже классы
+
+----
+
+### Пример: создаём таблицу
 
 ```clojure
 (table/create onto "users"
-  [{:name "id"   :type "int"    :nullable false}
-   {:name "name" :type "string" :nullable true}])
+  [{:name "name" :type "string" :nullable false}
+   {:name "age"  :type "int"    :nullable false}])
 ```
 
-Что происходит внутри? **Никаких DDL и CREATE TABLE.** Вместо этого создаются объекты:
+Объект → его классы:
 
-- `:table.users/-itself` — объект-класс, представляющий таблицу. Классифицирован как `:table/table`
-- `"users"` — информационный объект (имя таблицы), классифицирован как `:table/table.name` и `:table.users/-itself`
-- `:table.users/column.id` — объект-класс для колонки. Классифицирован как `:table/column` и `:table.users/-itself`
-- `:table.users/column.id.value` — класс для значений этой колонки
-
-Метаданные колонки (имя, тип, nullable) — тоже объекты, классифицированные соответствующими классами.
-
-**Таблица — это не структура данных, а набор взаимосвязанных классов.**
+```edn
+{:table.users/-itself              #{:table/table}
+ "users"                           #{:table/table.name :table.users/-itself}
+ ;; колонка name
+ :table.users/column.name          #{:table/column :table.users/-itself}
+ :table.users/column.name.value    #{:table/column.value-class :table.users/column.name}
+ "name"                            #{:table/column.name :table.users/column.name}
+ "string"                          #{:table/column.type :table.users/column.name}
+ ;; колонка age
+ :table.users/column.age           #{:table/column :table.users/-itself}
+ :table.users/column.age.value     #{:table/column.value-class :table.users/column.age}
+ "age"                             #{:table/column.name :table.users/column.age}
+ "int"                             #{:table/column.type :table.users/column.age}
+ ;; общий объект для обеих колонок
+ false                             #{:table/column.nullable
+                                     :table.users/column.name
+                                     :table.users/column.age}}
+```
 
 ----
 
-### Шаг 2: Вставка строки — данные как объекты
+### Добавляем строку
 
 ```clojure
-(table/insert onto "users" {:id 1 :name "Alice"})
+(table/insert onto "users" {:name "Alice" :age 30})
 ```
 
-Что создаётся:
+Что добавилось:
 
-- `:table.users/row.0` — объект строки, классифицированный как `:table/row` и `:table.users/-itself`
-- `1` — информационный объект, классифицированный как `:table.users/column.id.value` и `:table.users/row.0`
-- `"Alice"` — информационный объект, классифицированный как `:table.users/column.name.value` и `:table.users/row.0`
-
-**Значение ячейки — не «значение атрибута», а объект, принадлежащий пересечению классов «колонка» и «строка».**
-
-Чтобы найти значение `id` для строки `row.0`:
-
-```clojure
-(select-by-classes onto [:table.users/column.id.value :table.users/row.0])
-;; => #{1}
+```edn
+{:table.users/row.0                  #{:table/row :table.users/-itself}
+ :table.users/row.0.column.name      #{:core/class}
+ :table.users/row.0.column.age       #{:core/class}
+ "Alice"                              #{:table.users/column.name
+                                        :table.users/row.0.column.name
+                                        :table.users/column.name.value
+                                        :table.users/row.0}
+ 30                                   #{:table.users/column.age
+                                        :table.users/row.0.column.age
+                                        :table.users/column.age.value
+                                        :table.users/row.0}}
 ```
 
-Это не SELECT с WHERE — это пересечение множеств.
+1. `"Alice"` и `30` — объекты на пересечении классов «колонка» и «строка»
+1. `row.0.column.name` — вспомогательный класс для разрешения коллизий между строками
 
 ----
 
-### Шаг 3: Выборка — пересечение классов вместо SQL
+### Добавляем вторую строку
 
 ```clojure
-(table/select onto "users")
-;; => [{:id 1, :name "Alice"}]
+(table/insert onto "users" {:name "Bob" :age 30})
 ```
 
-Под капотом:
+Что добавилось:
 
-1. Найти все объекты класса `:table/row` ∩ `:table.users/-itself` → строки таблицы
-2. Для каждой строки и каждой колонки: найти объект в пересечении `:table.users/column.X.value` ∩ `:table.users/row.N`
-3. Собрать результат
+```edn
+{:table.users/row.1                  #{:table/row :table.users/-itself}
+ :table.users/row.1.column.name      #{:core/class}
+ :table.users/row.1.column.age       #{:core/class}
+ "Bob"                                #{:table.users/column.name
+                                        :table.users/row.1.column.name
+                                        :table.users/column.name.value
+                                        :table.users/row.1}
+ ;; 30 уже существует — просто получает новые классы
+ 30                                   #{:table.users/column.age
+                                        :table.users/row.0.column.age  ;; от Alice
+                                        :table.users/row.1.column.age  ;; от Bob
+                                        :table.users/column.age.value
+                                        :table.users/row.0
+                                        :table.users/row.1}}
+```
 
-**Запрос — это навигация по классам, а не обход структуры данных.**
+1. `"Bob"` — новый объект. Но `30` — **тот же объект**, что и у Alice
+1. Без `row.N.column.age` нельзя отличить «30 у Alice» от «30 у Bob» — для этого и нужны вспомогательные классы
 
 ----
 
-### Шаг 4: Интеграция таблиц — без JOIN, через общие классы
-
-Классическая проблема: три таблицы — `staff`, `account_manager`, `sales_person`. Virginia Thatcher есть в нескольких. Как объединить?
-
-В SQL: написать JOIN по фамилии и имени, разрешить дубликаты, выбрать «источник правды».
-
-В онтологии: **ввести общий класс и связать колонки через иерархию подклассов.**
+### Выборка: кому 30 лет?
 
 ```clojure
-;; Определяем общий класс «фамилия»
-(def-instance! onto ::surname [:core/class])
+;; SELECT * FROM users WHERE age = 30
 
-;; Помечаем колонки фамилий из всех таблиц как его подклассы
-(def-instance! onto :table.staff/column.surname.value
-  [] {:core/is-subclass [::surname]})
-(def-instance! onto :table.account_manager/column.surname.value
-  [] {:core/is-subclass [::surname]})
-(def-instance! onto :table.sales_person/column.surname.value
-  [] {:core/is-subclass [::surname]})
+;; 1. Находим объект 30 — он уже знает, в каких строках он есть:
+(select-by-classes onto [:table.users/column.age.value] [30])
+;; => #{30}
 
-;; Вывод (inference) автоматически пропагирует классификацию
-(infer-all onto)
+;; 2. Классы объекта 30 содержат строки:
+(object-classes onto 30)
+;; => #{... :table.users/row.0 :table.users/row.1 ...}
+
+;; 3. Фильтруем только строки таблицы:
+(select-by-classes onto [:table/row :table.users/-itself]
+                        [:table.users/row.0 :table.users/row.1])
+;; => #{:table.users/row.0 :table.users/row.1}
 ```
 
-После `infer-all` строка `"Thatcher"` из любой таблицы автоматически принадлежит классу `::surname`. Одна операция — и данные из трёх таблиц интегрированы **без копирования, без маппинга, без JOIN**.
+1. Нет сканирования таблицы — объект `30` **уже классифицирован** нужными строками
+1. Выборка — это пересечение классов, а не обход структуры данных
 
 ----
 
-### Шаг 5: Модель не ломается при расширении
+### Что ещё показано в тестах
 
-Добавить четвёртую таблицу `trainers` с колонкой `surname`?
+1. **Интеграция трёх таблиц** (staff, account_manager, sales_person) — через общий суперкласс `::surname`, без JOIN
+1. **Inference** — транзитивный вывод подклассов и автоматическая пропагация классификации
+1. **Мультиязычность** — объекты классифицируются по языку (`:language/en`, `:language/sp`), выборка — пересечение классов
+1. **Медицинская терминология** — кодовая система с концептами, иерархией и обозначениями на разных языках
 
-```clojure
-(def-instance! onto :table.trainers/column.surname.value
-  [] {:core/is-subclass [::surname]})
-(infer-all onto)
-```
-
-Одна строка. Никаких миграций, никаких изменений в существующих данных. Новые данные автоматически входят в существующие классы.
-
-**Расширение = добавление нового класса, а не изменение структуры.**
+Смотрите: [table_test.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/table_test.clj), [code_system_test.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/code_system_test.clj)
 
 ----
 
-### Итого: реляционная таблица vs онтология
+### Итого
 
-| Реляционная модель | Онтология |
-|----|------|
-| Таблица (DDL) | Набор классов |
-| Колонка | Класс для значений |
-| Строка | Объект, принадлежащий классу таблицы |
-| Значение ячейки | Объект на пересечении классов «колонка» и «строка» |
-| SELECT WHERE | Пересечение классов |
-| JOIN | Общий суперкласс + inference |
-| ALTER TABLE | Добавление нового класса (ничего не ломается) |
+1. Только **объекты и классы** — создание, вставка, выборка, интеграция, расширение
+1. Все объекты могут быть пронумерованы, все операции сводятся к **операциям на множествах**
+1. Вроде работает...
+
+Код: [core.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/core.clj), [table.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/table.clj)
+
+Тесты: [core_test.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/core_test.clj), [table_test.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/table_test.clj), [code_system_test.clj](https://github.com/ryukzak/uonto/blob/master/src/uonto/code_system_test.clj)
 
 ---
 
