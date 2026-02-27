@@ -1,0 +1,7 @@
+slides:
+  theme: slides/sunblind.css
+  separator: ^\s*---\s*$
+  separator_vertical: ^\s*----\s*$
+revealjs:
+  history: true
+  slideNumber: c/t
